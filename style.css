@@ -1,0 +1,60 @@
+html
+{
+	height: 100%;
+	min-height: 100%;
+	margin: 0;
+	padding: 0;
+	overflow: hidden;
+}
+
+body
+{
+	height: 100%;
+	min-height: 100%;
+	margin: 0;
+	border: 1em solid white;
+	box-sizing: border-box;
+}
+
+#divCode
+{
+	width: 50%;
+	height: 100%;
+	float: left;
+}
+
+#divView
+{
+	width: 50%;
+	height: 100%;
+	float: right;
+}
+
+#svgView
+{
+	width: 100%;
+	height: 100%;
+}
+
+.CodeMirror
+{
+	border: 1px solid gray;
+	height: 100%;
+}
+
+.codeEditorErrorIcon
+{
+	color: white;
+	background-color: red;
+	font-weight: bold;
+	border-radius: 50%;
+	padding: 0 3px;
+	margin-right: 7px;
+}
+
+.codeEditorErrorText
+{
+	background: #ffa;
+	color: red;
+	padding: 2px 5px 3px;
+}
