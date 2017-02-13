@@ -13,3 +13,12 @@ SongMeter.prototype.clone = function()
 		this.numerator,
 		this.denominator);
 }
+
+
+SongMeter.prototype.getMeasureLength = function()
+{
+	return new Rational(
+		0,
+		this.numerator,
+		this.denominator);
+}

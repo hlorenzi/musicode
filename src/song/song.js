@@ -1,17 +1,17 @@
 function Song()
 {
-	this.ticksPerWholeNote = 960;
-	this.lengthInTicks = 0;
+	this.length = new Rational(0);
 	this.tracks = [];
 	this.chords = [];
 	this.keys   = [];
 	this.meters = [];
+	this.forcedMeasures = [];
 }
 
 
-Song.prototype.setLengthInTicks = function(ticks)
+Song.prototype.setLength = function(ticks)
 {
-	this.lengthInTicks = ticks;
+	this.length = ticks;
 }
 
 
@@ -39,4 +39,10 @@ Song.prototype.keyAdd = function(key)
 Song.prototype.meterAdd = function(meter)
 {
 	this.meters.push(meter);
+}
+
+
+Song.prototype.forcedMeasureAdd = function(tick)
+{
+	this.forcedMeasures.push(tick);
 }

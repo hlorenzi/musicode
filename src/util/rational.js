@@ -14,14 +14,7 @@ Rational.prototype.clone = function()
 
 
 Rational.prototype.toString = function()
-{
-	this.trySimplifyBy(2);
-	this.trySimplifyBy(3);
-	this.trySimplifyBy(5);
-	this.trySimplifyBy(7);
-	this.trySimplifyBy(11);
-	this.trySimplifyBy(13);
-	
+{	
 	if (this.integer == 0 && this.numerator == 0)
 		return "0";
 	
@@ -54,6 +47,13 @@ Rational.prototype.normalize = function()
 		this.numerator -= this.denominator;
 		this.integer += 1;
 	}
+	
+	this.trySimplifyBy(2);
+	this.trySimplifyBy(3);
+	this.trySimplifyBy(5);
+	this.trySimplifyBy(7);
+	this.trySimplifyBy(11);
+	this.trySimplifyBy(13);
 }
 
 
@@ -64,6 +64,12 @@ Rational.prototype.trySimplifyBy = function(divider)
 		this.numerator /= divider;
 		this.denominator /= divider;
 	}
+}
+
+
+Rational.prototype.asFloat = function()
+{
+	return this.integer + this.numerator / this.denominator;
 }
 
 

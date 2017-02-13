@@ -1,12 +1,19 @@
 var codeEditor = null;
 var codeEditorLineWidgets = [];
 
+var viewer = null;
+
+var song = null;
+
 
 function main()
 {
-	var elem = document.getElementById("divCode");
+	var elemSvgViewer = document.getElementById("svgViewer");
+	viewer = new Viewer(elemSvgViewer);
+	window.addEventListener("resize", function() { viewer.refresh(); });
 	
-	codeEditor = CodeMirror(elem,
+	var elemDivCodeEditor = document.getElementById("divCode");
+	codeEditor = CodeMirror(elemDivCodeEditor,
 	{
 		lineNumbers: true
 	});
@@ -56,10 +63,12 @@ function compile()
 			msgDiv.className = "codeEditorErrorText";
 			
 			codeEditorLineWidgets.push(
-				codeEditor.addLineWidget(msg.lineStart, msgDiv, { above: false, coverGutter: false, noHScroll: true }));
+				codeEditor.addLineWidget(msg.lineStart, msgDiv, { coverGutter: false, noHScroll: true }));
 		}
 	};
 	
 	var parser = new CompilerParser(codeEditor.getValue(), msgReporter);
-	parser.parse();
+	song = parser.parse();
+	
+	viewer.setSong(song);
 }

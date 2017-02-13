@@ -19,7 +19,6 @@ function CompilerParser(src, msgReporter)
 
 CompilerParser.prototype.parse = function()
 {
-	console.log("---");
 	var error = false;
 	
 	var startedCompass = false;
@@ -74,7 +73,6 @@ CompilerParser.prototype.parse = function()
 			if (msg["description"] != undefined)
 			{
 				error = true;
-				console.log("error:" + msg.lineStart + ":" + msg.columnStart + ": " + msg.description);
 				this.msgReporter.report(msg);
 			}
 			else
@@ -82,8 +80,15 @@ CompilerParser.prototype.parse = function()
 		}
 	}
 	
-	if (!error)
-		console.log("ok");
+	if (this.currentGroupEndTick != null)
+	{
+		this.currentTick = this.currentGroupEndTick;
+		this.currentGroupEndTick = null;
+	}
+	
+	this.song.setLength(this.currentTick.clone());
+	
+	return this.song;
 }
 
 
@@ -218,6 +223,7 @@ CompilerParser.prototype.parseNoteTrack = function(lineReader)
 				lineReader.advance();
 				lineReader.skipWhitespace();
 				measureCorrectlyTerminated = true;
+				this.song.forcedMeasureAdd(trackData.currentTick.clone());
 				break;
 			}
 			
@@ -238,9 +244,7 @@ CompilerParser.prototype.parseNoteTrack = function(lineReader)
 			var startTick = trackData.currentTick.clone();
 			trackData.currentTick.add(note.length);
 			
-			this.song.noteAdd(new SongNote(startTick, trackData.currentTick.clone(), note.pitch));
-			
-			console.log("note " + note.pitch + " at " + startTick.toString())
+			this.song.noteAdd(trackIndex, new SongNote(startTick, trackData.currentTick.clone(), note.pitch));
 			
 			measureCorrectlyTerminated = false;
 		}
@@ -270,7 +274,7 @@ CompilerParser.prototype.parseNoteTrack = function(lineReader)
 
 CompilerParser.prototype.testMeasureFullness = function(lineReader, trackData)
 {
-	var meterLength = new Rational(0, this.currentMeter.numerator, this.currentMeter.denominator);
+	var meterLength = this.currentMeter.getMeasureLength();
 	
 	var measureLength = trackData.currentTick.clone();
 	measureLength.subtract(trackData.measureStartTick);
