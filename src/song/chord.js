@@ -1,12 +1,13 @@
-function Chord(timeRange, chordIndex, rootMidiPitch)
+function SongChord(startTick, endTick, chordIndex, rootMidiPitch)
 {
-	this.timeRange     = timeRange;
+	this.startTick     = startTick;
+	this.endTick       = endTick;
 	this.chordIndex    = chordIndex;
 	this.rootMidiPitch = rootMidiPitch;
 }
 
 
-Chord.prototype.clone = function()
+SongChord.prototype.clone = function()
 {
-	return new Chord(this.timeRange.clone(), this.chordIndex, this.rootMidiPitch);
+	return new SongChord(this.startTick.clone(), this.endTick.clone(), this.chordIndex, this.rootMidiPitch);
 }

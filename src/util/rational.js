@@ -173,10 +173,10 @@ Rational.prototype.compare = function(other)
 	
 	else
 	{
-		var finalDenominator = other.denominator * this.denominator;
+		var commonDenominator = other.denominator * this.denominator;
 		
-		var scale1 = finalDenominator / this.denominator;
-		var scale2 = finalDenominator / other.denominator;
+		var scale1 = commonDenominator / this.denominator;
+		var scale2 = commonDenominator / other.denominator;
 		
 		var numerator1 = this.numerator * scale1;
 		var numerator2 = other.numerator * scale2;

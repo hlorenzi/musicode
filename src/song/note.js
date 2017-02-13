@@ -1,11 +1,12 @@
-function Note(timeRange, pitch)
+function SongNote(startTick, endTick, midiPitch)
 {
-	this.timeRange = timeRange;
-	this.pitch     = pitch;
+	this.startTick = startTick;
+	this.endTick   = endTick;
+	this.midiPitch = midiPitch;
 }
 
 
-Note.prototype.clone = function()
+SongNote.prototype.clone = function()
 {
-	return new Note(this.timeRange.clone(), this.pitch.clone());
+	return new SongNote(this.startTick.clone(), this.endTick.clone(), this.midiPitch);
 }

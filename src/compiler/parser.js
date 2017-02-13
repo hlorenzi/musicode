@@ -6,10 +6,10 @@ function CompilerParser(src, msgReporter)
 	
 	this.currentTick = new Rational(0);
 	
-	this.currentKey = new SongKey(0, null, 0);
+	this.currentKey = new SongKey(this.currentTick.clone(), null, 0);
 	this.song.keyAdd(this.currentKey);
 	
-	this.currentMeter = new SongMeter(0, 4, 4);
+	this.currentMeter = new SongMeter(this.currentTick.clone(), 4, 4);
 	this.song.meterAdd(this.currentMeter);
 	
 	this.trackNum = 1;
@@ -126,7 +126,7 @@ CompilerParser.prototype.parseDirectiveKey = function(lineReader)
 	if (tonic == null)
 		throw lineReader.makeError("invalid tonic pitch '" + tonicString + "'");
 	
-	this.currentKey = new SongKey(this.currentTick, null, tonic);
+	this.currentKey = new SongKey(this.currentTick.clone(), null, tonic);
 	this.song.keyAdd(this.currentKey);
 }
 
@@ -161,7 +161,7 @@ CompilerParser.prototype.parseDirectiveMeter = function(lineReader)
 		denominator != 64 && denominator != 128))
 		throw lineReader.makeError("invalid meter denominator '" + denominatorString + "'");
 		
-	this.currentMeter = new SongMeter(this.currentTick, numerator, denominator);
+	this.currentMeter = new SongMeter(this.currentTick.clone(), numerator, denominator);
 	this.song.meterAdd(this.currentMeter);
 }
 
@@ -212,6 +212,8 @@ CompilerParser.prototype.parseNoteTrack = function(lineReader)
 			{
 				if (measureFullnessTest.compare == 0)
 					this.msgReporter.report(lineReader.makeError("redundant forced measure terminator"));
+				else if (measureFullnessTest.compare > 0)
+					throw measureFullnessTest.err;
 				
 				lineReader.advance();
 				lineReader.skipWhitespace();
@@ -233,14 +235,14 @@ CompilerParser.prototype.parseNoteTrack = function(lineReader)
 		else
 		{
 			var note = this.parseTrackNote(lineReader, trackData);
-			console.log("note " + note.pitch + " at " + trackData.currentTick.toString())
+			var startTick = trackData.currentTick.clone();
 			trackData.currentTick.add(note.length);
 			
-			measureCorrectlyTerminated = false;
+			this.song.noteAdd(new SongNote(startTick, trackData.currentTick.clone(), note.pitch));
 			
-			measureFullnessTest = this.testMeasureFullness(lineReader, trackData);
-			if (measureFullnessTest.compare > 0)
-				throw measureFullnessTest.err;
+			console.log("note " + note.pitch + " at " + startTick.toString())
+			
+			measureCorrectlyTerminated = false;
 		}
 	}
 	
