@@ -1,7 +1,7 @@
 function Song()
 {
 	this.length = new Rational(0);
-	this.tracks = [];
+	this.notes  = [];
 	this.chords = [];
 	this.keys   = [];
 	this.meters = [];
@@ -15,12 +15,9 @@ Song.prototype.setLength = function(ticks)
 }
 
 
-Song.prototype.noteAdd = function(track, note)
+Song.prototype.noteAdd = function(note)
 {
-	if (this.tracks[track] == undefined)
-		this.tracks[track] = [];
-	
-	this.tracks[track].push(note);
+	this.notes.push(note);
 }
 
 

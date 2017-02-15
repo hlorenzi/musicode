@@ -85,6 +85,8 @@ Rational.prototype.negate = function()
 	this.numerator = this.denominator - this.numerator;
 	
 	this.normalize();
+	
+	return this;
 }
 
 
@@ -92,6 +94,8 @@ Rational.prototype.add = function(other)
 {
 	this.addInteger(other.integer);
 	this.addFraction(other.numerator, other.denominator);
+	
+	return this;
 }
 
 
@@ -104,6 +108,8 @@ Rational.prototype.subtract = function(other)
 	this.integer = 0;
 	
 	this.normalize();
+	
+	return this;
 }
 
 
@@ -116,6 +122,8 @@ Rational.prototype.subtractFrom = function(other)
 	this.integer = 0;
 	
 	this.normalize();
+	
+	return this;
 }
 
 
@@ -129,12 +137,16 @@ Rational.prototype.multiply = function(other)
 	this.denominator = this.denominator * other.denominator;
 	
 	this.normalize();
+	
+	return this;
 }
 
 
 Rational.prototype.addInteger = function(value)
 {
 	this.integer += value;
+	
+	return this;
 }
 
 
@@ -164,6 +176,8 @@ Rational.prototype.addFraction = function(numerator, denominator)
 	}
 	
 	this.normalize();
+	
+	return this;
 }
 
 

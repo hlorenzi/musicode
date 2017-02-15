@@ -244,7 +244,8 @@ CompilerParser.prototype.parseNoteTrack = function(lineReader)
 			var startTick = trackData.currentTick.clone();
 			trackData.currentTick.add(note.length);
 			
-			this.song.noteAdd(trackIndex, new SongNote(startTick, trackData.currentTick.clone(), note.pitch));
+			if (note.pitch != null)
+				this.song.noteAdd(new SongNote(startTick, trackData.currentTick.clone(), trackIndex, note.pitch));
 			
 			measureCorrectlyTerminated = false;
 		}
