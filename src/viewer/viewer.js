@@ -13,6 +13,7 @@ function Viewer(svg)
 	this.marginBetweenRows = 5;
 	this.wholeTickWidth = 100;
 	this.noteHeight = 5;
+	this.noteSideMargin = 0.5;
 }
 
 
@@ -108,11 +109,11 @@ Viewer.prototype.refreshRow = function(data)
 			
 			// Calculate next measure separator, and
 			// check it against current nearest block break.
+			var currentMeter = this.song.meters[data.nextMeter - 1];
 			{
 				// Calculate from what tick we should start
 				// counting measures.
 				// Start by using the current meter's tick.
-				var currentMeter = this.song.meters[data.nextMeter - 1];
 				var currentMeterStartTick = currentMeter.tick.clone();
 				
 				// Check if there was a forced measure terminator after
@@ -164,7 +165,16 @@ Viewer.prototype.refreshRow = function(data)
 			
 			// Add the block to the list, if it is not degenerate.
 			if (tick.compare(nextBlockBreak) != 0)
-				blocks.push({ start: tick.clone(), end: nextBlockBreak.clone() });
+			{
+				var block =
+				{
+					start: tick.clone(),
+					end: nextBlockBreak.clone(),
+					meter: currentMeter
+				};
+				
+				blocks.push(block);
+			}
 			
 			// Update variables for next iteration.
 			// They need to be updated here at the end of the loop,
@@ -235,7 +245,7 @@ Viewer.prototype.refreshRow = function(data)
 	var noteStaffHeight = (midiPitchMax + 1 - midiPitchMin) * this.noteHeight;
 	var blockHeight = noteStaffHeight;
 	
-	// Print blocks.
+	// Render blocks.
 	for (var i = 0; i < blocks.length; i++)
 	{
 		var tickOffsetStart = blocks[i].start.clone().subtract(rowStartTick);
@@ -244,6 +254,7 @@ Viewer.prototype.refreshRow = function(data)
 		var xStart = tickOffsetStart.asFloat() * this.wholeTickWidth;
 		var xEnd = tickOffsetEnd.asFloat() * this.wholeTickWidth;
 		
+		// Add the block's background.
 		var svgBlock = makeSvgNode("rect",
 		{
 			x: this.margin + xStart,
@@ -252,11 +263,45 @@ Viewer.prototype.refreshRow = function(data)
 			height: blockHeight
 		});
 		
-		svgBlock.setAttribute("class", "viewerBlock");
+		svgBlock.setAttribute("class", "viewerBlockBackground");
+		this.svg.appendChild(svgBlock);
+		
+		// Add the meter's beat lines.
+		var beatTickOffset = tickOffsetStart.clone();
+		while (true)
+		{
+			beatTickOffset.add(blocks[i].meter.getBeatLength());
+			if (beatTickOffset.compare(tickOffsetEnd) >= 0)
+				break;
+			
+			var xBeat = beatTickOffset.asFloat() * this.wholeTickWidth;
+			
+			var svgBeat = makeSvgNode("line",
+			{
+				x1: this.margin + xBeat,
+				y1: data.y,
+				x2: this.margin + xBeat,
+				y2: data.y + blockHeight
+			});
+			
+			svgBeat.setAttribute("class", "viewerBeat");
+			this.svg.appendChild(svgBeat);
+		}
+		
+		// Add the block's frame.
+		var svgBlock = makeSvgNode("rect",
+		{
+			x: this.margin + xStart,
+			y: data.y,
+			width: xEnd - xStart,
+			height: blockHeight
+		});
+		
+		svgBlock.setAttribute("class", "viewerBlockFrame");
 		this.svg.appendChild(svgBlock);
 	}
 	
-	// Print notes.
+	// Render notes.
 	for (var i = 0; i < notes.length; i++)
 	{
 		var tickOffsetStart = notes[i].startTick.clone().subtract(rowStartTick);
@@ -276,9 +321,9 @@ Viewer.prototype.refreshRow = function(data)
 		
 		var svgBlock = makeSvgNode("rect",
 		{
-			x: this.margin + xStart,
+			x: this.margin + xStart + this.noteSideMargin,
 			y: data.y + yTop,
-			width: xEnd - xStart,
+			width: xEnd - xStart - this.noteSideMargin * 2,
 			height: this.noteHeight
 		});
 		

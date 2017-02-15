@@ -59,11 +59,24 @@ body
 	margin-right: 7px;
 }
 
-.viewerBlock
+.viewerBlockBackground
+{
+	stroke: black;
+	stroke-width: 0px;
+	fill: #eee;
+}
+
+.viewerBlockFrame
 {
 	stroke: black;
 	stroke-width: 2px;
 	fill: rgba(0, 0, 0, 0);
+}
+
+.viewerBeat
+{
+	stroke: white;
+	stroke-width: 2px;
 }
 
 .viewerNote

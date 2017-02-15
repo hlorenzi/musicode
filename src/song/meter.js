@@ -22,3 +22,12 @@ SongMeter.prototype.getMeasureLength = function()
 		this.numerator,
 		this.denominator);
 }
+
+
+SongMeter.prototype.getBeatLength = function()
+{
+	return new Rational(
+		0,
+		1,
+		this.denominator);
+}
