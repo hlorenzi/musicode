@@ -44,3 +44,9 @@ Theory.absoluteNoteNameToRelativePitchValue = function(string)
 	
 	return note;
 }
+
+
+Theory.getMeterLabel = function(numerator, denominator)
+{
+	return "" + numerator + " / " + denominator;
+}

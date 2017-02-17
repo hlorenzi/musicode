@@ -241,9 +241,22 @@ Viewer.prototype.refreshRow = function(data)
 		midiPitchMax = Math.max(notes[i].midiPitch, midiPitchMax);
 	}
 	
-	// Calculate block height.
+	// Check if there's any meter changes in this row.
+	var rowHasMeterChange = false;
+	for (var i = 0; i < blocks.length; i++)
+	{
+		if (blocks[i].meter.tick.compare(blocks[i].start) == 0)
+			rowHasMeterChange = true;
+	}
+	
+	// Calculate row and block height.
+	var meterChangeStaffYOffset = 0;
+	var meterChangeStaffHeight = (rowHasMeterChange ? 20 : 0);
+	var noteStaffYOffset = meterChangeStaffHeight;
 	var noteStaffHeight = (midiPitchMax + 1 - midiPitchMin) * this.noteHeight;
+	var blockYOffset = meterChangeStaffHeight;
 	var blockHeight = noteStaffHeight;
+	var rowHeight = blockYOffset + blockHeight;
 	
 	// Render blocks.
 	for (var i = 0; i < blocks.length; i++)
@@ -255,16 +268,13 @@ Viewer.prototype.refreshRow = function(data)
 		var xEnd = tickOffsetEnd.asFloat() * this.wholeTickWidth;
 		
 		// Add the block's background.
-		var svgBlock = makeSvgNode("rect",
+		this.addSvgNode("viewerBlockBackground", "rect",
 		{
 			x: this.margin + xStart,
-			y: data.y,
+			y: data.y + blockYOffset,
 			width: xEnd - xStart,
 			height: blockHeight
 		});
-		
-		svgBlock.setAttribute("class", "viewerBlockBackground");
-		this.svg.appendChild(svgBlock);
 		
 		// Add the meter's beat lines.
 		var beatTickOffset = tickOffsetStart.clone();
@@ -276,29 +286,42 @@ Viewer.prototype.refreshRow = function(data)
 			
 			var xBeat = beatTickOffset.asFloat() * this.wholeTickWidth;
 			
-			var svgBeat = makeSvgNode("line",
+			var svgBeat = this.addSvgNode("viewerBeat", "line",
 			{
 				x1: this.margin + xBeat,
-				y1: data.y,
+				y1: data.y + blockYOffset,
 				x2: this.margin + xBeat,
-				y2: data.y + blockHeight
+				y2: data.y + blockYOffset + blockHeight
 			});
-			
-			svgBeat.setAttribute("class", "viewerBeat");
-			this.svg.appendChild(svgBeat);
 		}
 		
 		// Add the block's frame.
-		var svgBlock = makeSvgNode("rect",
+		this.addSvgNode("viewerBlockFrame", "rect",
 		{
 			x: this.margin + xStart,
-			y: data.y,
+			y: data.y + blockYOffset,
 			width: xEnd - xStart,
 			height: blockHeight
 		});
 		
-		svgBlock.setAttribute("class", "viewerBlockFrame");
-		this.svg.appendChild(svgBlock);
+		// Add a meter change, if there is one.
+		if (blocks[i].meter.tick.compare(blocks[i].start) == 0)
+		{
+			var svgBeat = this.addSvgNode("viewerMeterLine", "line",
+			{
+				x1: this.margin + xStart,
+				y1: data.y + meterChangeStaffYOffset,
+				x2: this.margin + xStart,
+				y2: data.y + blockYOffset + blockHeight
+			});
+			
+			var svgBeat = this.addSvgText("viewerMeterLabel",
+				blocks[i].meter.getLabel(),
+				{
+					x: this.margin + xStart + 5,
+					y: data.y + meterChangeStaffYOffset + meterChangeStaffHeight / 2
+				});
+		}
 	}
 	
 	// Render notes.
@@ -317,23 +340,37 @@ Viewer.prototype.refreshRow = function(data)
 		var xEnd = tickOffsetEnd.asFloat() * this.wholeTickWidth;
 		
 		var midiPitchOffset = notes[i].midiPitch - midiPitchMin;
-		var yTop = noteStaffHeight - (midiPitchOffset + 1) * this.noteHeight;
+		var yTop = noteStaffYOffset + noteStaffHeight - (midiPitchOffset + 1) * this.noteHeight;
 		
-		var svgBlock = makeSvgNode("rect",
+		this.addSvgNode("viewerNote", "rect",
 		{
 			x: this.margin + xStart + this.noteSideMargin,
 			y: data.y + yTop,
 			width: xEnd - xStart - this.noteSideMargin * 2,
 			height: this.noteHeight
 		});
-		
-		svgBlock.setAttribute("class", "viewerNote");
-		this.svg.appendChild(svgBlock);
 	}
 	
 	// Update row-persistent variables.
-	data.y += blockHeight + this.marginBetweenRows;
+	data.y += rowHeight + this.marginBetweenRows;
 	data.currentTick = rowEndTick;
+}
+
+
+Viewer.prototype.addSvgNode = function(cl, kind, attributes)
+{
+	var node = makeSvgNode(kind, attributes);
+	node.setAttribute("class", cl);
+	this.svg.appendChild(node);
+}
+
+
+Viewer.prototype.addSvgText = function(cl, text, attributes)
+{
+	var node = makeSvgNode("text", attributes);
+	node.setAttribute("class", cl);
+	node.innerHTML = text;
+	this.svg.appendChild(node);
 }
 
 

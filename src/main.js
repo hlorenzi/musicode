@@ -38,7 +38,20 @@ function main()
 		"// simultaneous notes\n" +
 		"0| c5---- |\n" +
 		"0| g4--- _- |\n" +
-		"0| e4-- _-- |");
+		"0| e4-- _-- |\n\n\n" +
+		
+		"// meter changes\n" +
+		"@meter 11/8\n\n" +
+		
+		"0| c#5. c5. c#5. c5. c#5. c5. c#5. c5. c#5. c5. c#5. |\n\n" +
+		
+		"0| e5- f5- g4. a4. b4. c5-- |\n\n" +
+		
+		"@meter 5/4\n\n" +
+		
+		"0| b4----- |\n\n" +
+		
+		"0| c5----- |");
 		
 	codeEditor.focus();
 }
