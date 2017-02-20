@@ -100,3 +100,18 @@ body
 	text-align: left;
 	alignment-baseline: middle;
 }
+
+.viewerKeyLine
+{
+	stroke: #f04;
+	stroke-width: 2px;
+}
+
+.viewerKeyLabel
+{
+	fill: #f04;
+	font-family: Verdana, sans-serif;
+	font-size: 12px;
+	text-align: left;
+	alignment-baseline: middle;
+}

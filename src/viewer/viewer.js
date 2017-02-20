@@ -51,6 +51,7 @@ Viewer.prototype.refresh = function()
 		// Updated by refreshRow, stores state
 		// between calls to it.
 		currentTick: new Rational(0),
+		nextKey: 1,
 		nextMeter: 1,
 		nextForcedMeasure: 0,
 		nextNote: 0,
@@ -74,7 +75,7 @@ Viewer.prototype.refreshRow = function(data)
 {
 	// Calculate blocks which fit in this row.
 	// A block is any segment of music interrupted by
-	// a measure end or a meter change.
+	// a measure end or a key/meter change.
 	var blocks = [];
 	{
 		// Tick of where the next block starts.
@@ -89,14 +90,24 @@ Viewer.prototype.refreshRow = function(data)
 			// Find where is the nearest block break that follows the
 			// current tick, which could be due to one of many factors.
 			var REASON_SONG_END = 0;
-			var REASON_METER_CHANGE = 1;
-			var REASON_MEASURE = 2;
-			var REASON_FORCED_MEASURE = 3;
+			var REASON_KEY_CHANGE = 1;
+			var REASON_METER_CHANGE = 2;
+			var REASON_MEASURE = 3;
+			var REASON_FORCED_MEASURE = 4;
 			
 			// Start by using the song endpoint, then
 			// progressively search for breaks that happen before.
 			var nextBlockBreak = this.song.length.clone();
 			var nextBlockBreakReason = REASON_SONG_END;
+			
+			// Check next key change, if there is one, against the
+			// current nearest block break.
+			if (data.nextKey < this.song.keys.length &&
+				this.song.keys[data.nextKey].tick.compare(nextBlockBreak) < 0)
+			{
+				nextBlockBreak = this.song.keys[data.nextKey].tick.clone();
+				nextBlockBreakReason = REASON_KEY_CHANGE;
+			}
 			
 			// Check next meter change, if there is one, against the
 			// current nearest block break.
@@ -109,6 +120,7 @@ Viewer.prototype.refreshRow = function(data)
 			
 			// Calculate next measure separator, and
 			// check it against current nearest block break.
+			var currentKey = this.song.keys[data.nextKey - 1];
 			var currentMeter = this.song.meters[data.nextMeter - 1];
 			{
 				// Calculate from what tick we should start
@@ -170,6 +182,7 @@ Viewer.prototype.refreshRow = function(data)
 				{
 					start: tick.clone(),
 					end: nextBlockBreak.clone(),
+					key: currentKey,
 					meter: currentMeter
 				};
 				
@@ -185,6 +198,9 @@ Viewer.prototype.refreshRow = function(data)
 			
 			if (nextBlockBreakReason == REASON_SONG_END)
 				break;
+			
+			else if (nextBlockBreakReason == REASON_KEY_CHANGE)
+				data.nextKey += 1;
 			
 			else if (nextBlockBreakReason == REASON_METER_CHANGE)
 				data.nextMeter += 1;
@@ -241,20 +257,23 @@ Viewer.prototype.refreshRow = function(data)
 		midiPitchMax = Math.max(notes[i].midiPitch, midiPitchMax);
 	}
 	
-	// Check if there's any meter changes in this row.
+	// Check if there's any key/meter changes in this row.
+	var rowHasKeyChange = false;
 	var rowHasMeterChange = false;
 	for (var i = 0; i < blocks.length; i++)
 	{
-		if (blocks[i].meter.tick.compare(blocks[i].start) == 0)
-			rowHasMeterChange = true;
+		rowHasKeyChange   = rowHasKeyChange   || (blocks[i].key  .tick.compare(blocks[i].start) == 0);
+		rowHasMeterChange = rowHasMeterChange || (blocks[i].meter.tick.compare(blocks[i].start) == 0);
 	}
 	
 	// Calculate row and block height.
-	var meterChangeStaffYOffset = 0;
+	var keyChangeStaffYOffset = 0;
+	var keyChangeStaffHeight = (rowHasKeyChange ? 20 : 0);
+	var meterChangeStaffYOffset = keyChangeStaffHeight;
 	var meterChangeStaffHeight = (rowHasMeterChange ? 20 : 0);
-	var noteStaffYOffset = meterChangeStaffHeight;
+	var noteStaffYOffset = keyChangeStaffHeight + meterChangeStaffHeight;
 	var noteStaffHeight = (midiPitchMax + 1 - midiPitchMin) * this.noteHeight;
-	var blockYOffset = meterChangeStaffHeight;
+	var blockYOffset = keyChangeStaffHeight + meterChangeStaffHeight;
 	var blockHeight = noteStaffHeight;
 	var rowHeight = blockYOffset + blockHeight;
 	
@@ -304,7 +323,26 @@ Viewer.prototype.refreshRow = function(data)
 			height: blockHeight
 		});
 		
-		// Add a meter change, if there is one.
+		// Add a key change indicator, if there is one.
+		if (blocks[i].key.tick.compare(blocks[i].start) == 0)
+		{
+			var svgBeat = this.addSvgNode("viewerKeyLine", "line",
+			{
+				x1: this.margin + xStart,
+				y1: data.y + keyChangeStaffYOffset,
+				x2: this.margin + xStart,
+				y2: data.y + blockYOffset + blockHeight
+			});
+			
+			var svgBeat = this.addSvgText("viewerKeyLabel",
+				blocks[i].key.getLabel(),
+				{
+					x: this.margin + xStart + 5,
+					y: data.y + keyChangeStaffYOffset + keyChangeStaffHeight / 2
+				});
+		}
+		
+		// Add a meter change indicator, if there is one.
 		if (blocks[i].meter.tick.compare(blocks[i].start) == 0)
 		{
 			var svgBeat = this.addSvgNode("viewerMeterLine", "line",

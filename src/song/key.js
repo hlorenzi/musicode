@@ -13,3 +13,9 @@ SongKey.prototype.clone = function()
 		this.scaleIndex,
 		this.tonicMidiPitch);
 }
+
+
+SongKey.prototype.getLabel = function()
+{
+	return Theory.getKeyLabel(this.scaleIndex, this.tonicMidiPitch);
+}

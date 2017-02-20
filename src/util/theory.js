@@ -50,3 +50,11 @@ Theory.getMeterLabel = function(numerator, denominator)
 {
 	return "" + numerator + " / " + denominator;
 }
+
+
+Theory.getKeyLabel = function(scale, tonicMidiPitch)
+{
+	// TODO: Take scale into consideration.
+	var pitches = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+	return pitches[tonicMidiPitch];
+}
