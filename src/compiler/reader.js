@@ -75,9 +75,28 @@ CompilerReader.prototype.advance = function()
 
 CompilerReader.prototype.skipWhitespace = function()
 {
-	while (this.index < this.end && this.charIsWhitespace(this.src[this.index]))
+	while (this.index < this.end)
 	{
-		this.advance();
+		// Skip comments.
+		if (this.nextCharBy(0) == '/' && this.nextCharBy(1) == '/')
+		{
+			this.advance();
+			this.advance();
+			
+			while (this.index < this.end)
+			{
+				if (this.currentChar() == '\n')
+					break;
+				
+				this.advance();
+			}
+		}
+		
+		else if (!this.charIsWhitespace(this.currentChar()))
+			break;
+		
+		else
+			this.advance();
 	}
 };
 
@@ -100,7 +119,22 @@ CompilerReader.prototype.nextCharBy = function(amount)
 };
 
 
-CompilerReader.prototype.readWhile = function(fnStart, fnMiddle)
+CompilerReader.prototype.match = function(c, errMsg = null)
+{
+	if (this.currentChar() == c)
+	{
+		this.advance();
+		return true;
+	}
+	
+	if (errMsg == null)
+		return false;
+	
+	throw this.makeError(errMsg);
+};
+
+
+CompilerReader.prototype.readWhile = function(errMsg, fnStart, fnMiddle)
 {
 	if (fnStart(this.currentChar()))
 	{
@@ -114,43 +148,34 @@ CompilerReader.prototype.readWhile = function(fnStart, fnMiddle)
 		return string;
 	}
 	
-	return null;
-};
-
-
-CompilerReader.prototype.match = function(c)
-{
-	if (this.currentChar() == c)
-	{
-		this.advance();
-		return true;
-	}
+	if (errMsg == null)
+		return null;
 	
-	return false;
+	throw this.makeError(errMsg);
 };
 
 
-CompilerReader.prototype.readString = function()
+CompilerReader.prototype.readString = function(errMsg = null)
 {
-	return this.readWhile(this.charIsStringStart, this.charIsString);
+	return this.readWhile(errMsg, this.charIsStringStart, this.charIsString);
 };
 
 
-CompilerReader.prototype.readText = function()
+CompilerReader.prototype.readText = function(errMsg = null)
 {
-	return this.readWhile(this.charIsText, this.charIsText);
+	return this.readWhile(errMsg, this.charIsText, this.charIsText);
 };
 
 
-CompilerReader.prototype.readInteger = function()
+CompilerReader.prototype.readInteger = function(errMsg = null)
 {
-	return this.readWhile(this.charIsNumber, this.charIsNumber);
+	return this.readWhile(errMsg, this.charIsNumber, this.charIsNumber);
 };
 
 
-CompilerReader.prototype.readNoteName = function()
+CompilerReader.prototype.readNoteName = function(errMsg = null)
 {
-	return this.readWhile(this.charIsNoteName, this.charIsNoteName);
+	return this.readWhile(errMsg, this.charIsNoteName, this.charIsNoteName);
 };
 
 

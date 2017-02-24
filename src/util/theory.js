@@ -46,6 +46,21 @@ Theory.absoluteNoteNameToRelativePitchValue = function(string)
 }
 
 
+Theory.isValidMeterNumerator = function(numerator)
+{
+	return numerator >= 1 && numerator <= 256;
+}
+
+
+Theory.isValidMeterDenominator = function(denominator)
+{
+	return (
+		denominator == 1 || denominator == 2 || denominator == 4 ||
+		denominator == 8 || denominator == 16 || denominator == 32 ||
+		denominator == 64 || denominator == 128);
+}
+
+
 Theory.getMeterLabel = function(numerator, denominator)
 {
 	return "" + numerator + " / " + denominator;

@@ -5,7 +5,7 @@ function Song()
 	this.chords = [];
 	this.keys   = [];
 	this.meters = [];
-	this.forcedMeasures = [];
+	this.measures = [];
 }
 
 
@@ -39,7 +39,7 @@ Song.prototype.meterAdd = function(meter)
 }
 
 
-Song.prototype.forcedMeasureAdd = function(tick)
+Song.prototype.measureAdd = function(tick)
 {
-	this.forcedMeasures.push(tick);
+	this.measures.push(tick);
 }

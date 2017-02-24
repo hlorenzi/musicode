@@ -2,414 +2,466 @@ function CompilerParser(src, msgReporter)
 {
 	this.song = new Song();
 	this.reader = new CompilerReader(src);
+	this.lineReader = null;
 	this.msgReporter = msgReporter;
 	
-	this.currentTick = new Rational(0);
-	
-	this.currentKey = new SongKey(this.currentTick.clone(), null, 0);
-	this.song.keyAdd(this.currentKey);
-	
-	this.currentMeter = new SongMeter(this.currentTick.clone(), 4, 4);
-	this.song.meterAdd(this.currentMeter);
-	
 	this.trackNum = 1;
-	this.currentGroupEndTick = null;
+	
+	this.MEASURE_TERMINATOR_REGULAR = 0;
+	this.MEASURE_TERMINATOR_FORCED = 1;
+	this.MEASURE_TERMINATOR_CONTINUABLE = 2;
 }
 
 
 CompilerParser.prototype.parse = function()
 {
-	var error = false;
+	this.lineReader = this.reader.makeLineReader();
 	
-	var startedCompass = false;
-	
-	while (!this.reader.isOver())
+	// Prepare data that persists
+	// between tracks and segments.
+	var segmentData =
 	{
-		var lineReader = this.reader.makeLineReader();
-		lineReader.skipWhitespace();
+		segmentStartTick: new Rational(0),
+		firstMeasureStartTick: new Rational(0),
+		currentKey: new SongKey(new Rational(0), null, 0),
+		currentMeter: new SongMeter(new Rational(0), 4, 4),
+		noteTracks: [],
+		chordTrack: null,
+		measureTerminatorsToMatch: null,
+		lastMeasureTerminatorWasContinuable: false
+	};
+	
+	// Add song defaults.
+	this.song.keyAdd(segmentData.currentKey);
+	this.song.meterAdd(segmentData.currentMeter);
+	
+	while (true)
+	{
+		this.lineReader.skipWhitespace();
 		
-		if (lineReader.isOver())
-		{
-			if (startedCompass)
-			{
-				startedCompass = false;
-				
-				if (this.currentGroupEndTick != null)
-				{
-					this.currentTick = this.currentGroupEndTick;
-					this.currentGroupEndTick = null;
-				}
-			}
-			
-			continue;
-		}
+		// Alternate between parsing directives and
+		// segments of music.
+		// Also, finish up a segment if it has ended.
 		
 		try
 		{
-			if (lineReader.currentChar() == '/' && lineReader.nextCharBy(1) == '/')
-				continue;
-			
-			else if (lineReader.currentChar() == '@')
-				this.parseDirective(lineReader);
-			
-			else if (lineReader.currentChar() == '=')
+			if (this.lineReader.isOver())
 			{
-				startedCompass = true;
-				this.parseChordTrack(lineReader);
+				this.finishSegment(segmentData);
+			}
+			
+			else if (this.lineReader.currentChar() == '@')
+			{
+				this.finishSegment(segmentData);
+				this.parseDirective(segmentData);
 			}
 			
 			else
 			{
-				startedCompass = true;
-				this.parseNoteTrack(lineReader);
+				this.parseTrack(segmentData);
 			}
-			
-			lineReader.skipWhitespace();
-			if (!lineReader.isOver())
-				throw lineReader.makeError("expected line end");
 		}
 		catch (msg)
 		{
-			if (msg["description"] != undefined)
-			{
-				error = true;
-				this.msgReporter.report(msg);
-			}
-			else
-				throw msg;
+			this.handleReport(msg);
 		}
+		
+		if (this.reader.isOver())
+			break;
+			
+		this.lineReader = this.reader.makeLineReader();
 	}
 	
-	if (this.currentGroupEndTick != null)
-	{
-		this.currentTick = this.currentGroupEndTick;
-		this.currentGroupEndTick = null;
-	}
-	
-	this.song.setLength(this.currentTick.clone());
+	this.finishSegment(segmentData);
+	this.song.setLength(segmentData.segmentStartTick.clone());
 	
 	return this.song;
 }
 
 
-CompilerParser.prototype.parseDirective = function(lineReader)
+CompilerParser.prototype.handleReport = function(msg)
 {
-	lineReader.advance();
-	lineReader.skipWhitespace();
+	if (msg["description"] != undefined)
+		this.msgReporter.report(msg);
+	else
+		throw msg;
+}
+
+
+CompilerParser.prototype.parseDirective = function(segmentData)
+{
+	this.lineReader.match('@', "unreachable: expected '@'");
+	this.lineReader.skipWhitespace();
 	
-	var directive = lineReader.readString();
-	lineReader.skipWhitespace();
-	
-	if (directive == null)
-		throw lineReader.makeError("expected directive");
+	var directive = this.lineReader.readString("expected directive");
+	this.lineReader.skipWhitespace();
 	
 	switch (directive)
 	{
 		case "key":
-			this.parseDirectiveKey(lineReader);
+			this.parseDirectiveKey(segmentData);
 			break;
 			
 		case "meter":
-			this.parseDirectiveMeter(lineReader);
+			this.parseDirectiveMeter(segmentData);
 			break;
 			
 		default:
-			throw lineReader.makeError("unknown directive '" + directive + "'");
+			throw this.lineReader.makeError("unknown directive '" + directive + "'");
 	}
 }
 
 
-CompilerParser.prototype.parseDirectiveKey = function(lineReader)
+CompilerParser.prototype.parseDirectiveKey = function(segmentData)
 {
-	var tonicString = lineReader.readNoteName();
-	lineReader.skipWhitespace();
-	
-	if (tonicString == null)
-		throw lineReader.makeError("expected tonic pitch");
+	var tonicString = this.lineReader.readNoteName("expected tonic pitch");
+	this.lineReader.skipWhitespace();
 	
 	var tonic = Theory.absoluteNoteNameToRelativePitchValue(tonicString);
 	if (tonic == null)
-		throw lineReader.makeError("invalid tonic pitch '" + tonicString + "'");
+		throw this.lineReader.makeError("invalid tonic pitch '" + tonicString + "'");
 	
-	this.currentKey = new SongKey(this.currentTick.clone(), null, tonic);
-	this.song.keyAdd(this.currentKey);
+	segmentData.currentKey = new SongKey(segmentData.segmentStartTick.clone(), null, tonic);
+	this.song.keyAdd(segmentData.currentKey);
 }
 
 
-CompilerParser.prototype.parseDirectiveMeter = function(lineReader)
+CompilerParser.prototype.parseDirectiveMeter = function(segmentData)
 {
-	var numeratorString = lineReader.readInteger();
-	lineReader.skipWhitespace();
-	
-	if (numeratorString == null)
-		throw lineReader.makeError("expected meter numerator");
+	var numeratorString = this.lineReader.readInteger("expected meter numerator");
+	this.lineReader.skipWhitespace();
 	
 	var numerator = parseInt(numeratorString);
-	if (isNaN(numerator) || numerator <= 0 || numerator > 256)
-		throw lineReader.makeError("invalid meter numerator '" + numeratorString + "'");
+	if (isNaN(numerator) || !Theory.isValidMeterNumerator(numerator))
+		throw this.lineReader.makeError("invalid meter numerator '" + numeratorString + "'");
 	
-	if (!lineReader.match('/'))
-		throw lineReader.makeError("expected '/'");
+	this.lineReader.match('/', "expected '/'");
+	this.lineReader.skipWhitespace();
 	
-	lineReader.skipWhitespace();
-	
-	var denominatorString = lineReader.readInteger();
-	lineReader.skipWhitespace();
-	
-	if (denominatorString == null)
-		throw lineReader.makeError("expected meter denominator");
+	var denominatorString = this.lineReader.readInteger("expected meter denominator");
+	this.lineReader.skipWhitespace();
 	
 	var denominator = parseInt(denominatorString);
-	if (isNaN(denominator) ||
-		(denominator != 1 && denominator != 2 && denominator != 4 &&
-		denominator != 8 && denominator != 16 && denominator != 32 &&
-		denominator != 64 && denominator != 128))
-		throw lineReader.makeError("invalid meter denominator '" + denominatorString + "'");
+	if (isNaN(denominator) || !Theory.isValidMeterDenominator(denominator))
+		throw this.lineReader.makeError("invalid meter denominator '" + denominatorString + "'");
 		
-	this.currentMeter = new SongMeter(this.currentTick.clone(), numerator, denominator);
-	this.song.meterAdd(this.currentMeter);
+	segmentData.currentMeter = new SongMeter(segmentData.segmentStartTick.clone(), numerator, denominator);
+	this.song.meterAdd(segmentData.currentMeter);
 }
 
 
-CompilerParser.prototype.parseNoteTrack = function(lineReader)
+CompilerParser.prototype.parseTrack = function(segmentData)
 {
-	var trackString = lineReader.readInteger();
-	lineReader.skipWhitespace();
+	// Read track index.
+	var trackIndexString = this.lineReader.readInteger("expected track index");
+	this.lineReader.skipWhitespace();
 	
-	if (trackString == null)
-		throw lineReader.makeError("expected track identifier");
-	
-	var trackIndex = parseInt(trackString);
+	var trackIndex = parseInt(trackIndexString);
 	if (isNaN(trackIndex) || trackIndex < 0 || trackIndex >= this.trackNum)
-		throw lineReader.makeError("invalid track '" + trackString + "'");
+		throw this.lineReader.makeError("invalid track '" + trackIndexString + "'");
 	
-	if (!lineReader.match('|'))
-		throw lineReader.makeError("expected '|'");
+	// Read index separator according to whether
+	// the previous measure terminator was continuable.
+	if (segmentData.lastMeasureTerminatorWasContinuable)
+	{
+		this.lineReader.match('>', "expected '>>'");
+		this.lineReader.match('>', "expected '>>'");
+	}
+	else
+		this.lineReader.match('|', "expected '|'");
 	
-	lineReader.skipWhitespace();
+	this.lineReader.skipWhitespace();
 	
+	// TODO: Parse other types of tracks.
+	// Parse track data.
+	var trackData = this.parseNoteTrack(segmentData, trackIndex);
 	
+	// Add track to segment.
+	segmentData.noteTracks.push(trackData);
+	
+	// Verify measure terminator alignment within this segment,
+	// or, if this is the first track in the segment,
+	// set its measure terminators as the ones to be matched.
+	// TODO: Verify measure terminator alignment.
+	if (segmentData.measureTerminatorsToMatch == null)
+		segmentData.measureTerminatorsToMatch = trackData.measureTerminators;
+}
+
+
+CompilerParser.prototype.parseNoteTrack = function(segmentData, trackIndex)
+{
 	var trackData =
 	{
-		measureStartTick: this.currentTick.clone(),
-		currentTick: this.currentTick.clone(),
-		baseSizer: new Rational(0, 1, 4),
-		sizer: new Rational(0, 1, 4)
+		measureTerminators: [],
+		notes: [],
+		currentMeasureStartTick: segmentData.firstMeasureStartTick.clone(),
+		currentTick: segmentData.segmentStartTick.clone(),
+		baseDuration: new Rational(0, 1, 4)
 	};
 	
-	var measureCorrectlyTerminated = false;
-	
-	while (!lineReader.isOver())
+	while (!this.lineReader.isOver())
 	{
-		if (lineReader.currentChar() == '^')
-			this.parseTrackSizer(lineReader, trackData);
-		
-		else if (lineReader.currentChar() == '|')
+		// Parse as many notes as there are.
+		while (true)
 		{
-			if (measureCorrectlyTerminated)
-				throw lineReader.makeError("expected line end");
+			// Check if there is a duration specifier.
+			if (this.lineReader.currentChar() == '^')
+				this.parseSizer(trackData);
 			
-			lineReader.advance();
-			
-			var measureFullnessTest = this.testMeasureFullness(lineReader, trackData);
-			
-			if (lineReader.currentChar() == '|')
-			{
-				if (measureFullnessTest.compare == 0)
-					this.msgReporter.report(lineReader.makeError("redundant forced measure terminator"));
-				else if (measureFullnessTest.compare > 0)
-					throw measureFullnessTest.err;
-				
-				lineReader.advance();
-				lineReader.skipWhitespace();
-				measureCorrectlyTerminated = true;
-				this.song.forcedMeasureAdd(trackData.currentTick.clone());
+			var note = this.parseNote(trackData.baseDuration);
+			if (note == null)
 				break;
-			}
 			
-			lineReader.skipWhitespace();
-			
-			if (measureFullnessTest.compare != 0)
-				throw measureFullnessTest.err;
-			
-			trackData.measureStartTick.add(
-				new Rational(0, this.currentMeter.numerator, this.currentMeter.denominator));
-				
-			measureCorrectlyTerminated = true;
-		}
-		
-		else
-		{
-			var note = this.parseTrackNote(lineReader, trackData);
+			// Update tick for the next note.
 			var startTick = trackData.currentTick.clone();
-			trackData.currentTick.add(note.length);
+			trackData.currentTick.add(note.duration);
 			
+			// Register note, if it's not a rest.
 			if (note.pitch != null)
-				this.song.noteAdd(new SongNote(startTick, trackData.currentTick.clone(), trackIndex, note.pitch));
-			
-			measureCorrectlyTerminated = false;
+				trackData.notes.push(new SongNote(startTick, trackData.currentTick.clone(), trackIndex, note.pitch));
 		}
+		
+		// Parse a measure terminator.
+		this.parseTrackMeasureTerminator(segmentData, trackData);
 	}
 	
-	if (!measureCorrectlyTerminated)
-		throw lineReader.makeError("expected measure terminator");
+	return trackData;
+}
+
+
+CompilerParser.prototype.parseTrackMeasureTerminator = function(segmentData, trackData)
+{
+	// Is this a continuable measure terminator (double arrow)?
+	if (this.lineReader.nextCharBy(0) == '>' && this.lineReader.nextCharBy(1) == '>')
+	{
+		this.lineReader.advance();
+		this.lineReader.advance();
+		this.lineReader.skipWhitespace();
+		
+		// Register this terminator position.
+		trackData.measureTerminators.push({ kind: this.MEASURE_TERMINATOR_CONTINUABLE, tick: trackData.currentTick.clone() });
+		
+		// DON'T update measure start tick for next measure,
+		// because it's meant to be the same measure.
+	}
 	
-	if (this.currentGroupEndTick == null)
-		this.currentGroupEndTick = trackData.currentTick.clone();
+	// Is this a forced measure terminator (double bar)?
+	else if (this.lineReader.nextCharBy(0) == '|' && this.lineReader.nextCharBy(1) == '|')
+	{
+		this.lineReader.advance();
+		this.lineReader.advance();
+		this.lineReader.skipWhitespace();
+		
+		// Check that this measure is not exactly the right duration.
+		var measureDurationTest = this.testMeasureDuration(segmentData, trackData);
+		if (measureDurationTest.comparison == 0)
+			this.msgReporter.report(this.lineReader.makeError("redundant forced measure terminator"));
+		
+		// Register this terminator position.
+		trackData.measureTerminators.push({ kind: this.MEASURE_TERMINATOR_FORCED, tick: trackData.currentTick.clone() });
+		
+		// Update measure start tick for next measure.
+		trackData.currentMeasureStartTick = trackData.currentTick.clone();
+	}
+	
+	// Is this is a regular measure terminator (single bar)?
+	else if (this.lineReader.nextCharBy(0) == '|')
+	{
+		this.lineReader.advance();
+		this.lineReader.skipWhitespace();
+		
+		// Check that this measure is exactly the right duration.
+		var measureDurationTest = this.testMeasureDuration(segmentData, trackData);
+		if (measureDurationTest.comparison != 0)
+			this.msgReporter.report(measureDurationTest.err);
+		
+		// Register this terminator position.
+		trackData.measureTerminators.push({ kind: this.MEASURE_TERMINATOR_REGULAR, tick: trackData.currentTick.clone() });
+		
+		// Update measure start tick for next measure.
+		trackData.currentMeasureStartTick = trackData.currentTick.clone();
+	}
+	
+	// Else, this is an error.
 	else
-	{
-		var difference = trackData.currentTick.clone();
-		difference.subtract(this.currentGroupEndTick);
-		
-		var negatedDifference = difference.clone();
-		negatedDifference.negate();
-		
-		var comparison = difference.compare(new Rational(0));
-		if (comparison > 0)
-			throw lineReader.makeError("group length mismatch: overflowed by " + difference.toString());
-		else if (comparison < 0)
-			throw lineReader.makeError("group length mismatch: short by " + negatedDifference.toString());
-	}
+		throw this.lineReader.makeError("expected measure terminator");
 }
 
 
-CompilerParser.prototype.testMeasureFullness = function(lineReader, trackData)
+CompilerParser.prototype.finishSegment = function(segmentData)
 {
-	var meterLength = this.currentMeter.getMeasureLength();
+	// If there are no measure terminators to match,
+	// it means we haven't started parsing a segment,
+	// so there's nothing to do.
+	if (segmentData.measureTerminatorsToMatch == null)
+		return;
 	
-	var measureLength = trackData.currentTick.clone();
-	measureLength.subtract(trackData.measureStartTick);
-	
-	var measureLengthRemaining = measureLength.clone();
-	measureLengthRemaining.subtractFrom(meterLength);
-	
-	var measureLengthCompared = measureLengthRemaining.compare(new Rational(0));
-	if (measureLengthCompared > 0)
-		return { compare: -1, err: lineReader.makeError("measure short by " + measureLengthRemaining.toString()) };
-	else if (measureLengthCompared < 0)
+	// Add track elements to song.
+	for (var i = 0; i < segmentData.noteTracks.length; i++)
 	{
-		var measureLengthOverflow = measureLength.clone();
-		measureLengthOverflow.subtract(meterLength);
-		
-		return { compare: 1, err: lineReader.makeError("measure overflowed by " + measureLengthOverflow.toString()) };
+		var track = segmentData.noteTracks[i];
+		for (var j = 0; j < track.notes.length; j++)
+			this.song.noteAdd(track.notes[j]);
 	}
 	
-	return { compare: 0 };
+	// Add measure terminators to song.
+	for (var i = 0; i < segmentData.measureTerminatorsToMatch.length; i++)
+	{
+		if (segmentData.measureTerminatorsToMatch[i].kind != this.MEASURE_TERMINATOR_CONTINUABLE)
+			this.song.measureAdd(segmentData.measureTerminatorsToMatch[i].tick);
+	}
+	
+	// Grab next segment/measure start tick from any of
+	// the tracks, since they all should have the same record.
+	var anyTrackData = null;
+	if (segmentData.noteTracks.length > 0)
+		anyTrackData = segmentData.noteTracks[0];
+	else
+		anyTrackData = segmentData.chordTrack;
+	
+	// Update variables for next segment.
+	segmentData.segmentStartTick = anyTrackData.currentTick.clone();
+	segmentData.firstMeasureStartTick = anyTrackData.currentMeasureStartTick.clone();
+	
+	segmentData.noteTracks = [];
+	segmentData.chordTrack = null;
+	
+	segmentData.lastMeasureTerminatorWasContinuable = false;
+	if (segmentData.measureTerminatorsToMatch.length > 0)
+	{
+		var lastMeasureTerminator =
+			segmentData.measureTerminatorsToMatch[segmentData.measureTerminatorsToMatch.length - 1];
+		segmentData.lastMeasureTerminatorWasContinuable =
+			(lastMeasureTerminator.kind == this.MEASURE_TERMINATOR_CONTINUABLE);
+	}
+	
+	segmentData.measureTerminatorsToMatch = null;
 }
 
 
-CompilerParser.prototype.parseTrackSizer = function(lineReader, trackData)
+CompilerParser.prototype.testMeasureDuration = function(segmentData, trackData)
 {
-	lineReader.advance();
-	lineReader.skipWhitespace();
-
-	if (lineReader.charIsNumber(lineReader.currentChar()))
-	{
-		var denominatorString = lineReader.readInteger();
-		lineReader.skipWhitespace();
-		
-		var denominator = parseInt(denominatorString);
-		if (isNaN(denominator) ||
-			(denominator != 1 && denominator != 2 && denominator != 4 &&
-			denominator != 8 && denominator != 16 && denominator != 32 &&
-			denominator != 64 && denominator != 128))
-			throw lineReader.makeError("invalid length '" + denominatorString + "'");
+	// Get the expected correct measure length for the current meter.
+	var expectedMeasureLength = segmentData.currentMeter.getMeasureLength();
 	
-		trackData.baseSizer = new Rational(0, 1, denominator);
+	// Get the duration of the actual measure that was just parsed.
+	var actualMeasureLength = trackData.currentTick.clone().subtract(trackData.currentMeasureStartTick);
+	
+	// Calculate the difference between the actual and expected durations.
+	var difference = expectedMeasureLength.clone().subtractFrom(actualMeasureLength);
+	
+	var comparison = difference.compare(new Rational(0));
+	
+	if (comparison < 0)
+		return { comparison: -1, err: this.lineReader.makeError("measure short by " + difference.negate().toString()) };
+	
+	else if (comparison > 0)
+	{
+		var overflow = actualMeasureLength.subtract(expectedMeasureLength);
+		
+		return { comparison: 1, err: this.lineReader.makeError("measure overflowed by " + overflow.toString()) };
 	}
 	
-	trackData.sizer = trackData.baseSizer.clone();
+	return { comparison: 0 };
+}
+
+
+CompilerParser.prototype.parseSizer = function(trackData)
+{
+	this.lineReader.advance();
+	this.lineReader.skipWhitespace();
+
+	var denominatorString = this.lineReader.readInteger("expected duration specifier");
+	this.lineReader.skipWhitespace();
 	
-	if (lineReader.match(':'))
+	var denominator = parseInt(denominatorString);
+	if (isNaN(denominator) || !Theory.isValidMeterDenominator(denominator))
+		throw this.lineReader.makeError("invalid length '" + denominatorString + "'");
+
+	trackData.baseDuration = new Rational(0, 1, denominator);
+	
+	if (this.lineReader.match(':'))
 	{
-		lineReader.skipWhitespace();
+		this.lineReader.skipWhitespace();
 		
-		var tupleString = lineReader.readInteger();
-		if (tupleString == null)
-			throw lineReader.makeError("expected tuple size");
-		
-		lineReader.skipWhitespace();
+		var tupleString = this.lineReader.readInteger("expected tuple size");
+		this.lineReader.skipWhitespace();
 		
 		var tuple = parseInt(tupleString);
-		if (isNaN(tuple) || tuple <= 0 || tuple >= 128)
-			throw lineReader.makeError("invalid tuple size '" + tupleString + "'");
+		if (isNaN(tuple) || !Theory.isValidMeterNumerator(tuple))
+			throw this.lineReader.makeError("invalid tuple size '" + tupleString + "'");
 		
-		trackData.sizer.multiply(new Rational(0, 2, tuple));
+		trackData.baseDuration.multiply(new Rational(0, 1, tuple));
 	}
 }
 
 
-CompilerParser.prototype.parseTrackNote = function(lineReader, trackData)
+CompilerParser.prototype.parseNote = function(baseDuration)
 {
 	var pitch = null;
 	
-	if (lineReader.currentChar() == '_')
+	if (this.lineReader.currentChar() == '_')
 	{
-		lineReader.advance();
+		this.lineReader.advance();
 	}
 	else
 	{
-		var pitchString = lineReader.readNoteName();
+		var pitchString = this.lineReader.readNoteName();
 		if (pitchString == null)
-			throw lineReader.makeError("expected note");
+			return null;
 		
 		pitch = Theory.absoluteNoteNameToPitchValue(pitchString);
 		if (pitch == null)
-			throw lineReader.makeError("invalid note pitch '" + pitchString + "'");
+			throw this.lineReader.makeError("invalid note pitch '" + pitchString + "'");
 		
-		lineReader.skipWhitespace();
+		this.lineReader.skipWhitespace();
 		
-		var octaveString = lineReader.readInteger();
-		if (octaveString == null)
-			throw lineReader.makeError("expected note octave");
+		var octaveString = this.lineReader.readInteger("expected note octave");
 		
 		var octave = parseInt(octaveString);
 		if (isNaN(octave) || octave < 0 || octave >= 9)
-			throw lineReader.makeError("invalid note octave '" + octaveString + "'");
+			throw this.lineReader.makeError("invalid note octave '" + octaveString + "'");
 		
 		pitch += 12 * octave;
 		if (pitch < 0 || pitch >= 12 * 9)
-			throw lineReader.makeError("invalid note '" + pitchString + octaveString + "'");
+			throw this.lineReader.makeError("invalid note '" + pitchString + octaveString + "'");
 	}
 	
-	lineReader.skipWhitespace();
+	this.lineReader.skipWhitespace();
 	
-	var lengthMultiplier = this.parseTrackLengthMultiplier(lineReader);
-	if (lengthMultiplier == null)
-		throw lineReader.makeError("expected note length");
-	
-	var length = trackData.sizer.clone();
-	length.multiply(lengthMultiplier);
+	var durationMultiplier = this.parseDurationMultiplier();
+	if (durationMultiplier == null)
+		throw this.lineReader.makeError("expected note duration");
 	
 	return {
 		pitch: pitch,
-		length: length
+		duration: baseDuration.clone().multiply(durationMultiplier)
 	};
 }
 
 
-CompilerParser.prototype.parseTrackLengthMultiplier = function(lineReader)
+CompilerParser.prototype.parseDurationMultiplier = function()
 {
 	var multiplier = new Rational(0);
 	
 	while (true)
 	{
-		if (lineReader.match('-'))
+		if (this.lineReader.match('-'))
 			multiplier.add(new Rational(1));
 		
-		else if (lineReader.match('.'))
+		else if (this.lineReader.match('.'))
 			multiplier.add(new Rational(0, 1, 2));
 		
-		else if (lineReader.match(','))
+		else if (this.lineReader.match(','))
 			multiplier.add(new Rational(0, 1, 4));
 		
-		else if (lineReader.match(';'))
+		else if (this.lineReader.match(';'))
 			multiplier.add(new Rational(0, 1, 8));
 		
 		else
 			break;
 		
-		lineReader.skipWhitespace();
+		this.lineReader.skipWhitespace();
 	}
 	
 	if (multiplier.compare(new Rational(0)) == 0)

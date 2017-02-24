@@ -43,7 +43,7 @@ Viewer.prototype.refresh = function()
 	this.song.chords.sort(function (a, b) { return a.startTick.compare(b.startTick); });
 	this.song.keys.sort(function (a, b) { return a.tick.compare(b.tick); });
 	this.song.meters.sort(function (a, b) { return a.tick.compare(b.tick); });
-	this.song.forcedMeasures.sort(function (a, b) { return a.compare(b); });
+	this.song.measures.sort(function (a, b) { return a.compare(b); });
 	
 	// Prepare work data structure.
 	var data =
@@ -53,7 +53,7 @@ Viewer.prototype.refresh = function()
 		currentTick: new Rational(0),
 		nextKey: 1,
 		nextMeter: 1,
-		nextForcedMeasure: 0,
+		nextMeasure: 0,
 		nextNote: 0,
 		unterminatedNotes: [],
 		
@@ -87,13 +87,15 @@ Viewer.prototype.refreshRow = function(data)
 		
 		while (true)
 		{
+			var currentKey = this.song.keys[data.nextKey - 1];
+			var currentMeter = this.song.meters[data.nextMeter - 1];
+			
 			// Find where is the nearest block break that follows the
 			// current tick, which could be due to one of many factors.
 			var REASON_SONG_END = 0;
 			var REASON_KEY_CHANGE = 1;
 			var REASON_METER_CHANGE = 2;
 			var REASON_MEASURE = 3;
-			var REASON_FORCED_MEASURE = 4;
 			
 			// Start by using the song endpoint, then
 			// progressively search for breaks that happen before.
@@ -118,47 +120,13 @@ Viewer.prototype.refreshRow = function(data)
 				nextBlockBreakReason = REASON_METER_CHANGE;
 			}
 			
-			// Calculate next measure separator, and
-			// check it against current nearest block break.
-			var currentKey = this.song.keys[data.nextKey - 1];
-			var currentMeter = this.song.meters[data.nextMeter - 1];
-			{
-				// Calculate from what tick we should start
-				// counting measures.
-				// Start by using the current meter's tick.
-				var currentMeterStartTick = currentMeter.tick.clone();
-				
-				// Check if there was a forced measure terminator after
-				// the current meter's tick, which would displace the
-				// starting point to count measures.
-				if (data.nextForcedMeasure - 1 >= 0 &&
-					data.nextForcedMeasure - 1 < this.song.forcedMeasures.length &&
-					this.song.forcedMeasures[data.nextForcedMeasure - 1].compare(currentMeterStartTick) > 0)
-				{
-					currentMeterStartTick = this.song.forcedMeasures[data.nextForcedMeasure - 1].clone();
-				}
-				
-				// Count measures until the one following the current tick.
-				// Perhaps could be calculated more efficiently.
-				var nextMeasureBreak = currentMeterStartTick;
-				while (nextMeasureBreak.compare(tick) <= 0)
-					nextMeasureBreak.add(currentMeter.getMeasureLength());
-				
-				// Check it against the current nearest block break.
-				if (nextMeasureBreak.compare(nextBlockBreak) < 0)
-				{
-					nextBlockBreak = nextMeasureBreak;
-					nextBlockBreakReason = REASON_MEASURE;
-				}
-			}
-			
-			// Check next forced measure terminator, if there is one, against the
+			// Check next measure terminator, if there is one, against the
 			// current nearest block break.
-			if (data.nextForcedMeasure < this.song.forcedMeasures.length &&
-				this.song.forcedMeasures[data.nextForcedMeasure].compare(nextBlockBreak) < 0)
+			if (data.nextMeasure < this.song.measures.length &&
+				this.song.measures[data.nextMeasure].compare(nextBlockBreak) < 0)
 			{
-				nextBlockBreak = this.song.forcedMeasures[data.nextForcedMeasure].clone();
-				nextBlockBreakReason = REASON_FORCED_MEASURE;
+				nextBlockBreak = this.song.measures[data.nextMeasure].clone();
+				nextBlockBreakReason = REASON_MEASURE;
 			}
 			
 			// Check if this block overflows the canvas's width.
@@ -166,24 +134,30 @@ Viewer.prototype.refreshRow = function(data)
 			if (blockXEnd > this.width - this.margin)
 			{
 				// If there is already a block in this row,
-				// we can end it now.
+				// we can end the row now.
 				if (blocks.length > 0)
 					break;
 				
 				// TODO: Else, try breaking the block in
 				// smaller pieces.
-				// Currently just lets the block overflow the canvas.
+				// Currently this just lets the block overflow the canvas.
 			}
 			
 			// Add the block to the list, if it is not degenerate.
 			if (tick.compare(nextBlockBreak) != 0)
 			{
+				// Find the current measure's start tick.
+				var measureStart = new Rational(0);
+				if (data.nextMeasure - 1 >= 0)
+					measureStart = this.song.measures[data.nextMeasure - 1].clone();
+				
 				var block =
 				{
 					start: tick.clone(),
 					end: nextBlockBreak.clone(),
 					key: currentKey,
-					meter: currentMeter
+					meter: currentMeter,
+					measureStart: measureStart
 				};
 				
 				blocks.push(block);
@@ -205,8 +179,8 @@ Viewer.prototype.refreshRow = function(data)
 			else if (nextBlockBreakReason == REASON_METER_CHANGE)
 				data.nextMeter += 1;
 			
-			else if (nextBlockBreakReason == REASON_FORCED_MEASURE)
-				data.nextForcedMeasure += 1;
+			else if (nextBlockBreakReason == REASON_MEASURE)
+				data.nextMeasure += 1;
 		}
 	}
 	
@@ -296,10 +270,14 @@ Viewer.prototype.refreshRow = function(data)
 		});
 		
 		// Add the meter's beat lines.
-		var beatTickOffset = tickOffsetStart.clone();
+		var beatTickOffset = blocks[i].measureStart.clone().subtract(rowStartTick);
 		while (true)
 		{
 			beatTickOffset.add(blocks[i].meter.getBeatLength());
+			
+			if (beatTickOffset.compare(tickOffsetStart) <= 0)
+				continue;
+			
 			if (beatTickOffset.compare(tickOffsetEnd) >= 0)
 				break;
 			
