@@ -66,6 +66,9 @@ CompilerParser.prototype.parse = function()
 			this.handleReport(msg);
 		}
 		
+		if (!this.lineReader.isOver())
+			this.msgReporter.report(this.lineReader.makeError("expected line end"));
+		
 		if (this.reader.isOver())
 			break;
 			
@@ -205,8 +208,8 @@ CompilerParser.prototype.parseNoteTrack = function(segmentData, trackIndex)
 		while (true)
 		{
 			// Check if there is a duration specifier.
-			if (this.lineReader.currentChar() == '^')
-				this.parseSizer(trackData);
+			if (this.lineReader.currentChar() == ':')
+				this.parseDurationSpecifier(trackData);
 			
 			var note = this.parseNote(trackData.baseDuration);
 			if (note == null)
@@ -288,85 +291,7 @@ CompilerParser.prototype.parseTrackMeasureTerminator = function(segmentData, tra
 }
 
 
-CompilerParser.prototype.finishSegment = function(segmentData)
-{
-	// If there are no measure terminators to match,
-	// it means we haven't started parsing a segment,
-	// so there's nothing to do.
-	if (segmentData.measureTerminatorsToMatch == null)
-		return;
-	
-	// Add track elements to song.
-	for (var i = 0; i < segmentData.noteTracks.length; i++)
-	{
-		var track = segmentData.noteTracks[i];
-		for (var j = 0; j < track.notes.length; j++)
-			this.song.noteAdd(track.notes[j]);
-	}
-	
-	// Add measure terminators to song.
-	for (var i = 0; i < segmentData.measureTerminatorsToMatch.length; i++)
-	{
-		if (segmentData.measureTerminatorsToMatch[i].kind != this.MEASURE_TERMINATOR_CONTINUABLE)
-			this.song.measureAdd(segmentData.measureTerminatorsToMatch[i].tick);
-	}
-	
-	// Grab next segment/measure start tick from any of
-	// the tracks, since they all should have the same record.
-	var anyTrackData = null;
-	if (segmentData.noteTracks.length > 0)
-		anyTrackData = segmentData.noteTracks[0];
-	else
-		anyTrackData = segmentData.chordTrack;
-	
-	// Update variables for next segment.
-	segmentData.segmentStartTick = anyTrackData.currentTick.clone();
-	segmentData.firstMeasureStartTick = anyTrackData.currentMeasureStartTick.clone();
-	
-	segmentData.noteTracks = [];
-	segmentData.chordTrack = null;
-	
-	segmentData.lastMeasureTerminatorWasContinuable = false;
-	if (segmentData.measureTerminatorsToMatch.length > 0)
-	{
-		var lastMeasureTerminator =
-			segmentData.measureTerminatorsToMatch[segmentData.measureTerminatorsToMatch.length - 1];
-		segmentData.lastMeasureTerminatorWasContinuable =
-			(lastMeasureTerminator.kind == this.MEASURE_TERMINATOR_CONTINUABLE);
-	}
-	
-	segmentData.measureTerminatorsToMatch = null;
-}
-
-
-CompilerParser.prototype.testMeasureDuration = function(segmentData, trackData)
-{
-	// Get the expected correct measure length for the current meter.
-	var expectedMeasureLength = segmentData.currentMeter.getMeasureLength();
-	
-	// Get the duration of the actual measure that was just parsed.
-	var actualMeasureLength = trackData.currentTick.clone().subtract(trackData.currentMeasureStartTick);
-	
-	// Calculate the difference between the actual and expected durations.
-	var difference = expectedMeasureLength.clone().subtractFrom(actualMeasureLength);
-	
-	var comparison = difference.compare(new Rational(0));
-	
-	if (comparison < 0)
-		return { comparison: -1, err: this.lineReader.makeError("measure short by " + difference.negate().toString()) };
-	
-	else if (comparison > 0)
-	{
-		var overflow = actualMeasureLength.subtract(expectedMeasureLength);
-		
-		return { comparison: 1, err: this.lineReader.makeError("measure overflowed by " + overflow.toString()) };
-	}
-	
-	return { comparison: 0 };
-}
-
-
-CompilerParser.prototype.parseSizer = function(trackData)
+CompilerParser.prototype.parseDurationSpecifier = function(trackData)
 {
 	this.lineReader.advance();
 	this.lineReader.skipWhitespace();
@@ -419,11 +344,11 @@ CompilerParser.prototype.parseNote = function(baseDuration)
 		var octaveString = this.lineReader.readInteger("expected note octave");
 		
 		var octave = parseInt(octaveString);
-		if (isNaN(octave) || octave < 0 || octave >= 9)
+		if (isNaN(octave) || !Theory.isValidOctave(octave))
 			throw this.lineReader.makeError("invalid note octave '" + octaveString + "'");
 		
 		pitch += 12 * octave;
-		if (pitch < 0 || pitch >= 12 * 9)
+		if (!Theory.isValidMidiPitch(pitch))
 			throw this.lineReader.makeError("invalid note '" + pitchString + octaveString + "'");
 	}
 	
@@ -468,4 +393,82 @@ CompilerParser.prototype.parseDurationMultiplier = function()
 		return null;
 	
 	return multiplier;
+}
+
+
+CompilerParser.prototype.testMeasureDuration = function(segmentData, trackData)
+{
+	// Get the expected correct measure length for the current meter.
+	var expectedMeasureLength = segmentData.currentMeter.getMeasureLength();
+	
+	// Get the duration of the actual measure that was just parsed.
+	var actualMeasureLength = trackData.currentTick.clone().subtract(trackData.currentMeasureStartTick);
+	
+	// Calculate the difference between the actual and expected durations.
+	var difference = expectedMeasureLength.clone().subtractFrom(actualMeasureLength);
+	
+	var comparison = difference.compare(new Rational(0));
+	
+	if (comparison < 0)
+		return { comparison: -1, err: this.lineReader.makeError("measure short by " + difference.negate().toString()) };
+	
+	else if (comparison > 0)
+	{
+		var overflow = actualMeasureLength.subtract(expectedMeasureLength);
+		
+		return { comparison: 1, err: this.lineReader.makeError("measure overflowed by " + overflow.toString()) };
+	}
+	
+	return { comparison: 0 };
+}
+
+
+CompilerParser.prototype.finishSegment = function(segmentData)
+{
+	// If there are no measure terminators to match,
+	// it means we haven't started parsing a segment,
+	// so there's nothing to do.
+	if (segmentData.measureTerminatorsToMatch == null)
+		return;
+	
+	// Add track elements to song.
+	for (var i = 0; i < segmentData.noteTracks.length; i++)
+	{
+		var track = segmentData.noteTracks[i];
+		for (var j = 0; j < track.notes.length; j++)
+			this.song.noteAdd(track.notes[j]);
+	}
+	
+	// Add measure terminators to song.
+	for (var i = 0; i < segmentData.measureTerminatorsToMatch.length; i++)
+	{
+		if (segmentData.measureTerminatorsToMatch[i].kind != this.MEASURE_TERMINATOR_CONTINUABLE)
+			this.song.measureAdd(segmentData.measureTerminatorsToMatch[i].tick);
+	}
+	
+	// Grab next segment/measure start tick from any of
+	// the tracks, since they all should have the same record.
+	var anyTrackData = null;
+	if (segmentData.noteTracks.length > 0)
+		anyTrackData = segmentData.noteTracks[0];
+	else
+		anyTrackData = segmentData.chordTrack;
+	
+	// Update variables for next segment.
+	segmentData.segmentStartTick = anyTrackData.currentTick.clone();
+	segmentData.firstMeasureStartTick = anyTrackData.currentMeasureStartTick.clone();
+	
+	segmentData.noteTracks = [];
+	segmentData.chordTrack = null;
+	
+	segmentData.lastMeasureTerminatorWasContinuable = false;
+	if (segmentData.measureTerminatorsToMatch.length > 0)
+	{
+		var lastMeasureTerminator =
+			segmentData.measureTerminatorsToMatch[segmentData.measureTerminatorsToMatch.length - 1];
+		segmentData.lastMeasureTerminatorWasContinuable =
+			(lastMeasureTerminator.kind == this.MEASURE_TERMINATOR_CONTINUABLE);
+	}
+	
+	segmentData.measureTerminatorsToMatch = null;
 }

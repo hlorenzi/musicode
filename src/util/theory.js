@@ -46,6 +46,18 @@ Theory.absoluteNoteNameToRelativePitchValue = function(string)
 }
 
 
+Theory.isValidMidiPitch = function(pitch)
+{
+	return pitch >= 0 && pitch < 12 * 9;
+}
+
+
+Theory.isValidOctave = function(octave)
+{
+	return octave >= 0 && octave < 9;
+}
+
+
 Theory.isValidMeterNumerator = function(numerator)
 {
 	return numerator >= 1 && numerator <= 256;

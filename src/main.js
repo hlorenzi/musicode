@@ -26,7 +26,7 @@ function main()
 		"@meter 4/4\n\n\n" +
 		
 		"// tuplets and anacrusis\n" +
-		"0| ^4:3 a3- a#3- b3- ||\n\n\n" +
+		"0| :4:3 a3- a#3- b3- ||\n\n\n" +
 		
 		"// each group of lines defines a segment of music,\n" +
 		"// usually one or more complete measures\n" +
