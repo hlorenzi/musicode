@@ -37,8 +37,14 @@ function main()
 		
 		"// simultaneous notes\n" +
 		"0| c5---- |\n" +
-		"0| g4--- _- |\n" +
-		"0| e4-- _-- |\n\n\n" +
+		"0| g4---- |\n" +
+		"0| d4---- |\n\n\n" +
+		
+		"// note extensions from previous measure\n" +
+		"// (works with simultaneous tracks)\n" +
+		"0| ---- |\n" +
+		"0| -- _-- |\n" +
+		"0| e4---- |\n\n\n" +
 		
 		"// meter changes\n" +
 		"@meter 11/8\n\n" +

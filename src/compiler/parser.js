@@ -25,10 +25,12 @@ CompilerParser.prototype.parse = function()
 		firstMeasureStartTick: new Rational(0),
 		currentKey: new SongKey(new Rational(0), null, 0),
 		currentMeter: new SongMeter(new Rational(0), 4, 4),
-		noteTracks: [],
+		noteTracks: [[]],
 		chordTrack: null,
 		measureTerminatorsToMatch: null,
-		lastMeasureTerminatorWasContinuable: false
+		lastMeasureTerminatorWasContinuable: false,
+		lastNoteByTrack: [[]],
+		lastChord: null
 	};
 	
 	// Add song defaults.
@@ -45,17 +47,20 @@ CompilerParser.prototype.parse = function()
 		
 		try
 		{
+			// Finish a segment if there is a blank line.
 			if (this.lineReader.isOver())
 			{
 				this.finishSegment(segmentData);
 			}
 			
+			// Read a directive.
 			else if (this.lineReader.currentChar() == '@')
 			{
 				this.finishSegment(segmentData);
 				this.parseDirective(segmentData);
 			}
 			
+			// Or parse a track for the current segment.
 			else
 			{
 				this.parseTrack(segmentData);
@@ -175,12 +180,27 @@ CompilerParser.prototype.parseTrack = function(segmentData)
 	
 	this.lineReader.skipWhitespace();
 	
-	// TODO: Parse other types of tracks.
+	// Find out what subtrack index this is.
+	// This is the number of times this track has
+	// appeared within the current segment
+	// (i.e. simultaneous notes).
+	var subTrackIndex = 0;
+	var subTracks = segmentData.noteTracks[trackIndex];
+	if (subTracks != undefined)
+		subTrackIndex = subTracks.length;
+	
+	if (segmentData.lastNoteByTrack[trackIndex] == undefined)
+		segmentData.lastNoteByTrack[trackIndex] = [];
+	
 	// Parse track data.
-	var trackData = this.parseNoteTrack(segmentData, trackIndex);
+	// TODO: Parse other types of tracks.
+	var trackData = this.parseNoteTrack(segmentData, trackIndex, subTrackIndex);
 	
 	// Add track to segment.
-	segmentData.noteTracks.push(trackData);
+	if (segmentData.noteTracks[trackIndex] == undefined)
+		segmentData.noteTracks[trackIndex] = [];
+	
+	segmentData.noteTracks[trackIndex].push(trackData);
 	
 	// Verify measure terminator alignment within this segment,
 	// or, if this is the first track in the segment,
@@ -191,7 +211,7 @@ CompilerParser.prototype.parseTrack = function(segmentData)
 }
 
 
-CompilerParser.prototype.parseNoteTrack = function(segmentData, trackIndex)
+CompilerParser.prototype.parseNoteTrack = function(segmentData, trackIndex, subTrackIndex)
 {
 	var trackData =
 	{
@@ -211,17 +231,38 @@ CompilerParser.prototype.parseNoteTrack = function(segmentData, trackIndex)
 			if (this.lineReader.currentChar() == ':')
 				this.parseDurationSpecifier(trackData);
 			
-			var note = this.parseNote(trackData.baseDuration);
-			if (note == null)
-				break;
+			// Check if there is a duration marker,
+			// which will extend the previous note.
+			if (this.lineReader.currentChar() == '-' ||
+			    this.lineReader.currentChar() == '.' ||
+			    this.lineReader.currentChar() == ',' ||
+			    this.lineReader.currentChar() == ';')
+			{
+				if (segmentData.lastNoteByTrack[trackIndex][subTrackIndex] == null)
+					throw this.lineReader.makeError("invalid note extension");
+				
+				var extension = this.parseNoteExtension(segmentData, trackData, trackIndex, subTrackIndex);
+				
+				// Update tick for the next note.
+				trackData.currentTick.add(extension.duration);
+			}
 			
-			// Update tick for the next note.
-			var startTick = trackData.currentTick.clone();
-			trackData.currentTick.add(note.duration);
-			
-			// Register note, if it's not a rest.
-			if (note.pitch != null)
-				trackData.notes.push(new SongNote(startTick, trackData.currentTick.clone(), trackIndex, note.pitch));
+			// Or else, parse a note start.
+			else
+			{
+				var note = this.parseNote(trackData.baseDuration);
+				if (note == null)
+					break;
+				
+				// Update tick for the next note.
+				var startTick = trackData.currentTick.clone();
+				trackData.currentTick.add(note.duration);
+				
+				// Register note.
+				var songNote = new SongNote(startTick, trackData.currentTick.clone(), trackIndex, note.pitch);
+				trackData.notes.push(songNote);
+				segmentData.lastNoteByTrack[trackIndex][subTrackIndex] = songNote;
+			}
 		}
 		
 		// Parse a measure terminator.
@@ -365,6 +406,20 @@ CompilerParser.prototype.parseNote = function(baseDuration)
 }
 
 
+CompilerParser.prototype.parseNoteExtension = function(segmentData, trackData, trackIndex, subTrackIndex)
+{
+	var durationMultiplier = this.parseDurationMultiplier();
+	if (durationMultiplier == null)
+		throw this.lineReader.makeError("expected note duration");
+	
+	var duration = trackData.baseDuration.clone().multiply(durationMultiplier);
+	segmentData.lastNoteByTrack[trackIndex][subTrackIndex].endTick.add(duration);
+	
+	return { duration: duration };
+}
+
+
+
 CompilerParser.prototype.parseDurationMultiplier = function()
 {
 	var multiplier = new Rational(0);
@@ -434,10 +489,20 @@ CompilerParser.prototype.finishSegment = function(segmentData)
 	// Add track elements to song.
 	for (var i = 0; i < segmentData.noteTracks.length; i++)
 	{
-		var track = segmentData.noteTracks[i];
-		for (var j = 0; j < track.notes.length; j++)
-			this.song.noteAdd(track.notes[j]);
+		var subTracks = segmentData.noteTracks[i];
+		if (subTracks == undefined)
+			continue;
+		
+		for (var j = 0; j < subTracks.length; j++)
+		{
+			var track = segmentData.noteTracks[i][j];
+			for (var k = 0; k < track.notes.length; k++)
+				this.song.noteAdd(track.notes[k]);
+		}
 	}
+	
+	// TODO: Clear lastNoteByTrack list for any subtrack
+	// that was skipped during this segment.
 	
 	// Add measure terminators to song.
 	for (var i = 0; i < segmentData.measureTerminatorsToMatch.length; i++)
@@ -449,16 +514,28 @@ CompilerParser.prototype.finishSegment = function(segmentData)
 	// Grab next segment/measure start tick from any of
 	// the tracks, since they all should have the same record.
 	var anyTrackData = null;
-	if (segmentData.noteTracks.length > 0)
-		anyTrackData = segmentData.noteTracks[0];
-	else
+	if (segmentData.chordTrack != null)
 		anyTrackData = segmentData.chordTrack;
+	else
+	{
+		for (var i = 0; i < segmentData.noteTracks.length; i++)
+		{
+			var subTracks = segmentData.noteTracks[i];
+			if (subTracks == undefined)
+				continue;
+			
+			for (var j = 0; j < subTracks.length; j++)
+			{
+				anyTrackData = segmentData.noteTracks[i][j];
+			}
+		}
+	}
 	
 	// Update variables for next segment.
 	segmentData.segmentStartTick = anyTrackData.currentTick.clone();
 	segmentData.firstMeasureStartTick = anyTrackData.currentMeasureStartTick.clone();
 	
-	segmentData.noteTracks = [];
+	segmentData.noteTracks = [[]];
 	segmentData.chordTrack = null;
 	
 	segmentData.lastMeasureTerminatorWasContinuable = false;

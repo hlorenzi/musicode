@@ -227,6 +227,9 @@ Viewer.prototype.refreshRow = function(data)
 	var midiPitchMax = this.defaultNoteMidiPitchMax;
 	for (var i = 0; i < notes.length; i++)
 	{
+		if (notes[i].midiPitch == null)
+			continue;
+		
 		midiPitchMin = Math.min(notes[i].midiPitch, midiPitchMin);
 		midiPitchMax = Math.max(notes[i].midiPitch, midiPitchMax);
 	}
@@ -343,6 +346,9 @@ Viewer.prototype.refreshRow = function(data)
 	// Render notes.
 	for (var i = 0; i < notes.length; i++)
 	{
+		if (notes[i].midiPitch == null)
+			continue;
+		
 		var tickOffsetStart = notes[i].startTick.clone().subtract(rowStartTick);
 		var tickOffsetEnd = notes[i].endTick.clone().subtract(rowStartTick);
 		
