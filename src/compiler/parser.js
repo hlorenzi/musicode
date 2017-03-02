@@ -421,9 +421,19 @@ CompilerParser.prototype.parseNote = function(baseDuration)
 	
 	this.lineReader.skipWhitespace();
 	
-	var durationMultiplier = this.parseDurationMultiplier();
-	if (durationMultiplier == null)
-		throw this.lineReader.makeError("expected note duration");
+	// Check if there is a duration multiplier to parse,
+	// or else use the base duration.
+	var durationMultiplier = new Rational(1);
+	
+	if (this.lineReader.currentChar() == '-' ||
+		this.lineReader.currentChar() == '.' ||
+		this.lineReader.currentChar() == ',' ||
+		this.lineReader.currentChar() == ';')
+	{
+		durationMultiplier = this.parseDurationMultiplier();
+		if (durationMultiplier == null)
+			throw this.lineReader.makeError("expected note duration");
+	}
 	
 	return {
 		pitch: pitch,
