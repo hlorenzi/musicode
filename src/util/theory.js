@@ -87,7 +87,7 @@ Theory.getMeterLabel = function(numerator, denominator)
 
 Theory.getKeyLabel = function(scale, tonicMidiPitch)
 {
-	// TODO: Take scale into consideration.
+	// TODO: Use the representation set by the user (i.e., C# versus Db)
 	var pitches = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-	return pitches[tonicMidiPitch];
+	return pitches[tonicMidiPitch % 12];
 }

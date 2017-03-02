@@ -133,6 +133,7 @@ CompilerParser.prototype.parseDirective = function(segmentData)
 
 CompilerParser.prototype.parseDirectiveKey = function(segmentData)
 {
+	// Parse the tonic pitch.
 	var tonicString = this.lineReader.readNoteName("expected tonic pitch");
 	this.lineReader.skipWhitespace();
 	
@@ -140,6 +141,23 @@ CompilerParser.prototype.parseDirectiveKey = function(segmentData)
 	if (tonic == null)
 		throw this.lineReader.makeError("invalid tonic pitch '" + tonicString + "'");
 	
+	// Parse an octave, if there is one.
+	var octaveString = "5";
+	var octave = 5;
+	if (this.lineReader.charIsNumber(this.lineReader.currentChar()))
+	{
+		octaveString = this.lineReader.readInteger("unreachable: expected tonic pitch octave");
+
+		octave = parseInt(octaveString);
+		if (isNaN(octave) || !Theory.isValidOctave(octave))
+			throw this.lineReader.makeError("invalid tonic pitch octave '" + octaveString + "'");
+	}
+	
+	tonic += 12 * octave;
+	if (!Theory.isValidMidiPitch(tonic))
+		throw this.lineReader.makeError("invalid tonic pitch '" + tonicString + octaveString + "'");
+	
+	// Add to song.
 	segmentData.currentKey = new SongKey(segmentData.segmentStartTick.clone(), null, tonic);
 	this.song.keyAdd(segmentData.currentKey);
 }
@@ -147,6 +165,7 @@ CompilerParser.prototype.parseDirectiveKey = function(segmentData)
 
 CompilerParser.prototype.parseDirectiveMeter = function(segmentData)
 {
+	// Parse the meter numerator.
 	var numeratorString = this.lineReader.readInteger("expected meter numerator");
 	this.lineReader.skipWhitespace();
 	
@@ -154,16 +173,19 @@ CompilerParser.prototype.parseDirectiveMeter = function(segmentData)
 	if (isNaN(numerator) || !Theory.isValidMeterNumerator(numerator))
 		throw this.lineReader.makeError("invalid meter numerator '" + numeratorString + "'");
 	
+	// Parse separator.
 	this.lineReader.match('/', "expected '/'");
 	this.lineReader.skipWhitespace();
 	
+	// Parse the meter denominator.
 	var denominatorString = this.lineReader.readInteger("expected meter denominator");
 	this.lineReader.skipWhitespace();
 	
 	var denominator = parseInt(denominatorString);
 	if (isNaN(denominator) || !Theory.isValidMeterDenominator(denominator))
 		throw this.lineReader.makeError("invalid meter denominator '" + denominatorString + "'");
-		
+	
+	// Add to song.
 	segmentData.currentMeter = new SongMeter(segmentData.segmentStartTick.clone(), numerator, denominator);
 	this.song.meterAdd(segmentData.currentMeter);
 }
@@ -197,11 +219,9 @@ CompilerParser.prototype.parseTrack = function(segmentData)
 	// Read index separator according to whether
 	// the previous measure terminator was continuable.
 	if (segmentData.lastMeasureTerminatorWasContinuable)
-	{
-		this.lineReader.match('~', "expected '~'");
-	}
+		this.lineReader.match('~', "expected measure continuation '~'");
 	else
-		this.lineReader.match('|', "expected '|'");
+		this.lineReader.match('|', "expected measure start '|'");
 	
 	this.lineReader.skipWhitespace();
 	
@@ -244,6 +264,7 @@ CompilerParser.prototype.parseNoteTrack = function(segmentData, trackIndex, subT
 		notes: [],
 		currentMeasureStartTick: segmentData.firstMeasureStartTick.clone(),
 		currentTick: segmentData.segmentStartTick.clone(),
+		currentOctaveOffset: 0,
 		baseDuration: segmentData.currentMeter.getBeatLength()
 	};
 	
@@ -256,9 +277,25 @@ CompilerParser.prototype.parseNoteTrack = function(segmentData, trackIndex, subT
 			if (this.lineReader.currentChar() == ':')
 				this.parseDurationSpecifier(trackData);
 			
-			// Check if there is a duration marker,
+			// Check if there is an octave increment.
+			else if (this.lineReader.currentChar() == '>')
+			{
+				this.lineReader.advance();
+				this.lineReader.skipWhitespace();
+				trackData.currentOctaveOffset++;
+			}
+			
+			// Check if there is an octave decrement.
+			else if (this.lineReader.currentChar() == '<')
+			{
+				this.lineReader.advance();
+				this.lineReader.skipWhitespace();
+				trackData.currentOctaveOffset--;
+			}
+			
+			// Check if there is a stray duration multiplier,
 			// which will extend the previous note.
-			if (this.lineReader.currentChar() == '-' ||
+			else if (this.lineReader.currentChar() == '-' ||
 			    this.lineReader.currentChar() == '.' ||
 			    this.lineReader.currentChar() == ',' ||
 			    this.lineReader.currentChar() == ';')
@@ -275,7 +312,7 @@ CompilerParser.prototype.parseNoteTrack = function(segmentData, trackIndex, subT
 			// Or else, parse a note start.
 			else
 			{
-				var note = this.parseNote(trackData.baseDuration);
+				var note = this.parseNote(segmentData, trackData);
 				if (note == null)
 					break;
 				
@@ -386,7 +423,7 @@ CompilerParser.prototype.parseDurationSpecifier = function(trackData)
 }
 
 
-CompilerParser.prototype.parseNote = function(baseDuration)
+CompilerParser.prototype.parseNote = function(segmentData, trackData)
 {
 	var pitch = null;
 	
@@ -400,21 +437,20 @@ CompilerParser.prototype.parseNote = function(baseDuration)
 		if (pitchString == null)
 			return null;
 		
-		pitch = Theory.absoluteNoteNameToPitchValue(pitchString);
+		pitch = Theory.absoluteNoteNameToRelativePitchValue(pitchString);
 		if (pitch == null)
 			throw this.lineReader.makeError("invalid note pitch '" + pitchString + "'");
 		
 		this.lineReader.skipWhitespace();
 		
-		var octaveString = this.lineReader.readInteger("expected note octave");
+		// Calculate final pitch taking into consideration
+		// the current key's tonic and the current octave offset.
+		if (pitch < segmentData.currentKey.tonicMidiPitch % 12)
+			pitch += 12;
 		
-		var octave = parseInt(octaveString);
-		if (isNaN(octave) || !Theory.isValidOctave(octave))
-			throw this.lineReader.makeError("invalid note octave '" + octaveString + "'");
-		
-		pitch += 12 * octave;
+		pitch += 12 * (trackData.currentOctaveOffset + Math.floor(segmentData.currentKey.tonicMidiPitch / 12));
 		if (!Theory.isValidMidiPitch(pitch))
-			throw this.lineReader.makeError("invalid note '" + pitchString + octaveString + "'");
+			throw this.lineReader.makeError("note pitch out of bounds");
 	}
 	
 	this.lineReader.skipWhitespace();
@@ -435,7 +471,7 @@ CompilerParser.prototype.parseNote = function(baseDuration)
 	
 	return {
 		pitch: pitch,
-		duration: baseDuration.clone().multiply(durationMultiplier)
+		duration: trackData.baseDuration.clone().multiply(durationMultiplier)
 	};
 }
 

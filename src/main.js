@@ -27,48 +27,48 @@ function main()
 	codeEditor.on("change", function() { compile(); });
 	
 	codeEditor.setValue(
-		"@key c\n" +
+		"@key c4\n" +
 		"@meter 4/4\n" +
 		"@tempo 120\n\n\n" +
 		
 		"// tuplets and anacrusis\n" +
-		"0| :4:3 a3 a#3 b3 ||\n\n\n" +
+		"0| :4:3 < a a# b ||\n\n\n" +
 		
 		"// each group of lines defines a segment of music,\n" +
 		"// usually one or more complete measures\n" +
-		"0| c4 d4 e4 f4 |\n\n\n" +
+		"0| c d e f |\n\n\n" +
 		
 		"// rests and different durations\n" +
-		"0| g4-- _- a4. a#4, b4, |\n\n\n" +
+		"0| g-- _- a. a#, b, |\n\n\n" +
 		
 		"// simultaneous notes\n" +
-		"0| :1 c5 |\n" +
-		"0| :1 g4 |\n" +
-		"0| :1 d4 |\n\n\n" +
+		"0| :1 > c |\n" +
+		"0| :1   g |\n" +
+		"0| :1   d |\n\n\n" +
 		
 		"// note extensions from previous measure\n" +
 		"// (works with simultaneous tracks)\n" +
 		"0| ---- |\n" +
 		"0| -- _-- |\n" +
-		"0| e4---- |\n\n\n" +
+		"0| e---- |\n\n\n" +
 		
 		"// meter changes\n" +
 		"@meter 11/8\n\n" +
 		
-		"0| c#5 c5 c#5 c5 c#5 c5 c#5 c5 c#5 c5 c#5 |\n\n\n" +
+		"0| > c# c c# c c# c c# c c# c c# |\n\n\n" +
 		
 		"// key changes\n" +
-		"@key e\n\n" +
+		"@key e5\n\n" +
 		
-		"0| e5-- g#5-- b4 g#4 b4 c5---- |\n\n\n" +
+		"0| e-- g#-- < b g# b c---- |\n\n\n" +
 		
 		"@meter 5/4\n\n" +
 		
-		"0| b4----- |\n\n" +
+		"0| < b----- |\n\n" +
 		
-		"@key c\n\n" +
+		"@key c5\n\n" +
 		
-		"0| c5----- |");
+		"0| c----- |");
 		
 	codeEditor.focus();
 }
