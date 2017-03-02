@@ -47,13 +47,13 @@ CompilerReader.prototype.makeError = function(description)
 		columnStart: this.column,
 		columnEnd: this.column
 	};
-};
+}
 
 
 CompilerReader.prototype.isOver = function()
 {
 	return this.index >= this.end;
-};
+}
 
 
 CompilerReader.prototype.advance = function()
@@ -70,7 +70,7 @@ CompilerReader.prototype.advance = function()
 		
 		this.index += 1;
 	}
-};
+}
 
 
 CompilerReader.prototype.skipWhitespace = function()
@@ -98,7 +98,7 @@ CompilerReader.prototype.skipWhitespace = function()
 		else
 			this.advance();
 	}
-};
+}
 
 
 CompilerReader.prototype.currentChar = function()
@@ -107,7 +107,7 @@ CompilerReader.prototype.currentChar = function()
 		return this.src[this.index];
 	else
 		return '\0';
-};
+}
 
 
 CompilerReader.prototype.nextCharBy = function(amount)
@@ -116,7 +116,7 @@ CompilerReader.prototype.nextCharBy = function(amount)
 		return this.src[this.index + amount];
 	else
 		return '\0';
-};
+}
 
 
 CompilerReader.prototype.match = function(c, errMsg = null)
@@ -131,7 +131,7 @@ CompilerReader.prototype.match = function(c, errMsg = null)
 		return false;
 	
 	throw this.makeError(errMsg);
-};
+}
 
 
 CompilerReader.prototype.readWhile = function(errMsg, fnStart, fnMiddle)
@@ -152,31 +152,37 @@ CompilerReader.prototype.readWhile = function(errMsg, fnStart, fnMiddle)
 		return null;
 	
 	throw this.makeError(errMsg);
-};
+}
 
 
 CompilerReader.prototype.readString = function(errMsg = null)
 {
 	return this.readWhile(errMsg, this.charIsStringStart, this.charIsString);
-};
+}
 
 
 CompilerReader.prototype.readText = function(errMsg = null)
 {
 	return this.readWhile(errMsg, this.charIsText, this.charIsText);
-};
+}
 
 
 CompilerReader.prototype.readInteger = function(errMsg = null)
 {
 	return this.readWhile(errMsg, this.charIsNumber, this.charIsNumber);
-};
+}
 
 
 CompilerReader.prototype.readNoteName = function(errMsg = null)
 {
 	return this.readWhile(errMsg, this.charIsNoteName, this.charIsNoteName);
-};
+}
+
+
+CompilerReader.prototype.readDegreeName = function(errMsg = null)
+{
+	return this.readWhile(errMsg, this.charIsDegreeName, this.charIsDegreeName);
+}
 
 
 CompilerReader.prototype.charIsWhitespace = function(c)
@@ -227,4 +233,12 @@ CompilerReader.prototype.charIsNoteName = function(c)
 		(c >= 'A' && c <= 'G') ||
 		(c >= 'a' && c <= 'g') ||
 		c == '#');
+}
+
+
+CompilerReader.prototype.charIsDegreeName = function(c)
+{
+	return (
+		(c >= '1' && c <= '7') ||
+		c == 'b' || c == '#');
 }

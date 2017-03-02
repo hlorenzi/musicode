@@ -9,7 +9,7 @@ In the future, it should support:
 
 - [ ] Multiple tracks and instruments
 - [ ] Roman numeral harmony analysis
-- [ ] Key-independent notation
+- [x] Key-relative notation
 - [ ] Note pitch bending
 - [ ] Note/Track parameter changes, such as note velocity
 - [ ] Song parameter changes, such as tempo

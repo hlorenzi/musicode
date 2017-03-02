@@ -1,7 +1,7 @@
 var Theory = {};
 
 
-Theory.absoluteNoteNameToPitchValue = function(string)
+Theory.decodeAbsoluteNoteName = function(string)
 {
 	var note = 0;
 	switch (string.charAt(0).toLowerCase())
@@ -30,9 +30,38 @@ Theory.absoluteNoteNameToPitchValue = function(string)
 }
 
 
-Theory.absoluteNoteNameToRelativePitchValue = function(string)
+Theory.decodeDegreeName = function(string)
 {
-	var note = Theory.absoluteNoteNameToPitchValue(string);
+	var degree = 0;
+	switch (string.charAt(0).toLowerCase())
+	{
+		case "1": degree = 0; break;
+		case "2": degree = 2; break;
+		case "3": degree = 4; break;
+		case "4": degree = 5; break;
+		case "5": degree = 7; break;
+		case "6": degree = 9; break;
+		case "7": degree = 11; break;
+		default: return null;
+	}
+	
+	for (var i = 1; i < string.length; i++)
+	{
+		switch (string.charAt(i))
+		{
+			case "#": degree += 1; break;
+			case "b": degree -= 1; break;
+			default: return null;
+		}
+	}
+	
+	return degree;
+}
+
+
+Theory.decodeRelativeNoteName = function(string)
+{
+	var note = Theory.decodeAbsoluteNoteName(string);
 	if (note == null)
 		return null;
 	

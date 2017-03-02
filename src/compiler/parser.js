@@ -23,7 +23,7 @@ CompilerParser.prototype.parse = function()
 	{
 		segmentStartTick: new Rational(0),
 		firstMeasureStartTick: new Rational(0),
-		currentKey: new SongKey(new Rational(0), null, 0),
+		currentKey: new SongKey(new Rational(0), null, 60),
 		currentMeter: new SongMeter(new Rational(0), 4, 4),
 		noteTracks: [[]],
 		chordTrack: null,
@@ -137,7 +137,7 @@ CompilerParser.prototype.parseDirectiveKey = function(segmentData)
 	var tonicString = this.lineReader.readNoteName("expected tonic pitch");
 	this.lineReader.skipWhitespace();
 	
-	var tonic = Theory.absoluteNoteNameToRelativePitchValue(tonicString);
+	var tonic = Theory.decodeRelativeNoteName(tonicString);
 	if (tonic == null)
 		throw this.lineReader.makeError("invalid tonic pitch '" + tonicString + "'");
 	
@@ -427,17 +427,18 @@ CompilerParser.prototype.parseNote = function(segmentData, trackData)
 {
 	var pitch = null;
 	
+	// Check if it's a rest.
 	if (this.lineReader.currentChar() == '_')
 	{
 		this.lineReader.advance();
 	}
-	else
+	
+	// Check if it's an absolute note name.
+	else if (this.lineReader.charIsNoteName(this.lineReader.currentChar()))
 	{
-		var pitchString = this.lineReader.readNoteName();
-		if (pitchString == null)
-			return null;
+		var pitchString = this.lineReader.readNoteName("unreachable: expected note pitch");
 		
-		pitch = Theory.absoluteNoteNameToRelativePitchValue(pitchString);
+		pitch = Theory.decodeRelativeNoteName(pitchString);
 		if (pitch == null)
 			throw this.lineReader.makeError("invalid note pitch '" + pitchString + "'");
 		
@@ -452,6 +453,27 @@ CompilerParser.prototype.parseNote = function(segmentData, trackData)
 		if (!Theory.isValidMidiPitch(pitch))
 			throw this.lineReader.makeError("note pitch out of bounds");
 	}
+	
+	// Check if it's a degree name.
+	else if (this.lineReader.charIsDegreeName(this.lineReader.currentChar()))
+	{
+		var degreeString = this.lineReader.readDegreeName("unreachable: expected note degree");
+		
+		var degree = Theory.decodeDegreeName(degreeString);
+		if (degree == null)
+			throw this.lineReader.makeError("invalid note degree '" + degreeString + "'");
+		
+		this.lineReader.skipWhitespace();
+		
+		// Calculate final pitch taking into consideration
+		// the current key's tonic and the current octave offset.
+		pitch = degree + segmentData.currentKey.tonicMidiPitch + 12 * trackData.currentOctaveOffset;
+		if (!Theory.isValidMidiPitch(pitch))
+			throw this.lineReader.makeError("note pitch out of bounds");
+	}
+	
+	else
+		return null;
 	
 	this.lineReader.skipWhitespace();
 	
