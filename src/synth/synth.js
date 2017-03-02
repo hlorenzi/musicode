@@ -18,6 +18,8 @@ Synth.prototype.play = function(callback)
 	
 	this.processCallback = callback;
 	
+	this.sortEvents();
+	
 	var that = this;
 	this.interval = setInterval(function() { that.process(1 / 60); }, 1000 / 60);
 }
@@ -58,56 +60,37 @@ Synth.prototype.process = function(deltaTime)
 	
 	while (true)
 	{
-		var processWhichKind = -1;
-		var nextEventTime = this.time;
-		
-		// Determine which event is next up.
+		// Handle pending note on events up to the current time.
 		if (noteOnProcessed < this.noteOnEvents.length &&
-			this.noteOnEvents[noteOnProcessed].time < nextEventTime)
+			this.noteOnEvents[noteOnProcessed].time <= this.time)
 		{
-			processWhichKind = 0;
-			nextEventTime = this.noteOnEvents[noteOnProcessed].time;
+			var ev = this.noteOnEvents[noteOnProcessed];
+			noteOnProcessed++;
+			
+			this.voiceStart(ev.instrument, ev.midiPitch, ev.volume);
 		}
 		
-		if (noteOffProcessed < this.noteOffEvents.length &&
-			this.noteOffEvents[noteOffProcessed].time < nextEventTime)
+		// Handle pending note off events up to the current time.
+		else if (noteOffProcessed < this.noteOffEvents.length &&
+			this.noteOffEvents[noteOffProcessed].time <= this.time)
 		{
-			processWhichKind = 1;
-			nextEventTime = this.noteOffEvents[noteOffProcessed].time;
-		}
-		
-		if (processWhichKind == -1)
-			break;
-		
-		// Process next event.
-		switch (processWhichKind)
-		{
-			case 0:
+			var ev = this.noteOffEvents[noteOffProcessed];
+			noteOffProcessed++;
+			
+			for (var j = 0; j < this.voices.length; j++)
 			{
-				var ev = this.noteOnEvents[noteOnProcessed];
-				noteOnProcessed++;
-				this.voiceStart(ev.instrument, ev.midiPitch, ev.volume);
-				break;
-			}
-			case 1:
-			{
-				var ev = this.noteOffEvents[noteOffProcessed];
-				
-				noteOffProcessed++;
-				processedEvent = true;
-				
-				for (var j = 0; j < this.voices.length; j++)
+				var voice = this.voices[j];
+				if (voice.instrument == ev.instrument &&
+					voice.midiPitch == ev.midiPitch)
 				{
-					var voice = this.voices[j];
-					if (voice.instrument == ev.instrument &&
-						voice.midiPitch == ev.midiPitch)
-					{
-						this.voiceOff(j);
-					}
+					this.voiceOff(j);
 				}
-				break;
 			}
 		}
+		
+		// Else, there are no more events up to the current time.
+		else
+			break;
 	}
 	
 	// Remove processed events.

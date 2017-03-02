@@ -55,6 +55,9 @@ Song.prototype.feedSynth = function(synth, startTick)
 	{
 		var note = this.notes[i];
 		
+		if (note.midiPitch == null)
+			continue;
+		
 		if (note.endTick.compare(startTick) <= 0)
 			continue;
 		
