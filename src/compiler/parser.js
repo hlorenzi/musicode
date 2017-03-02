@@ -198,8 +198,7 @@ CompilerParser.prototype.parseTrack = function(segmentData)
 	// the previous measure terminator was continuable.
 	if (segmentData.lastMeasureTerminatorWasContinuable)
 	{
-		this.lineReader.match('>', "expected '>>'");
-		this.lineReader.match('>', "expected '>>'");
+		this.lineReader.match('~', "expected '~'");
 	}
 	else
 		this.lineReader.match('|', "expected '|'");
@@ -301,10 +300,9 @@ CompilerParser.prototype.parseNoteTrack = function(segmentData, trackIndex, subT
 
 CompilerParser.prototype.parseTrackMeasureTerminator = function(segmentData, trackData)
 {
-	// Is this a continuable measure terminator (double arrow)?
-	if (this.lineReader.nextCharBy(0) == '>' && this.lineReader.nextCharBy(1) == '>')
+	// Is this a continuable measure terminator (tilde)?
+	if (this.lineReader.nextCharBy(0) == '~')
 	{
-		this.lineReader.advance();
 		this.lineReader.advance();
 		this.lineReader.skipWhitespace();
 		
