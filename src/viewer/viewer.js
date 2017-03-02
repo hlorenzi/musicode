@@ -1,7 +1,21 @@
 function Viewer(svg)
 {
+	var that = this;
+	
 	this.svg = svg;
+	this.svg.onmousemove = function(ev) { that.eventMouseMove(ev); };
+	this.svg.onmouseup = function(ev) { that.eventMouseUp(ev); };
+	this.svg.onmouseout = function(ev) { that.eventMouseOut(ev); };
+	
+	this.svgCursor = null;
+	this.svgCursorGhost = null;
+	this.svgCursorPlayback = null;
+	
 	this.song = null;
+	this.blocks = [];
+	this.cursorTick = new Rational(0);
+	this.cursorGhostTick = new Rational(0);
+	this.cursorPlaybackTick = new Rational(0);
 	
 	this.width = 0;
 	this.height = 0;
@@ -10,10 +24,100 @@ function Viewer(svg)
 	this.defaultNoteMidiPitchMax = 71;
 	
 	this.margin = 10;
-	this.marginBetweenRows = 5;
+	this.marginBetweenRows = 10;
 	this.wholeTickWidth = 100;
 	this.noteHeight = 5;
 	this.noteSideMargin = 0.5;
+}
+
+
+Viewer.prototype.eventMouseMove = function(ev)
+{
+	var elemRect = this.svg.getBoundingClientRect();
+	var mouseX = ev.clientX - elemRect.left;
+	var mouseY = ev.clientY - elemRect.top;
+	
+	// Update cursor ghost.
+	if (this.svgCursorGhost == null)
+		return;
+	
+	var blockAtMouse = this.getBlockAt(mouseX, mouseY);
+	
+	var offset = blockAtMouse == null ? new Rational(0) :
+		this.getTickOffset(mouseX - blockAtMouse.x, new Rational(0, 1, 8));
+	
+	this.cursorGhostTick = this.updateSvgCursor(this.svgCursorGhost, blockAtMouse, offset);
+}
+
+
+Viewer.prototype.eventMouseUp = function(ev)
+{
+	var elemRect = this.svg.getBoundingClientRect();
+	var mouseX = ev.clientX - elemRect.left;
+	var mouseY = ev.clientY - elemRect.top;
+	
+	// Update cursor.
+	if (this.svgCursor == null)
+		return;
+	
+	var blockAtMouse = this.getBlockAt(mouseX, mouseY);
+	
+	var offset = blockAtMouse == null ? new Rational(0) :
+		this.getTickOffset(mouseX - blockAtMouse.x, new Rational(0, 1, 8));
+	
+	this.cursorTick = this.updateSvgCursor(this.svgCursor, blockAtMouse, offset);
+}
+
+
+Viewer.prototype.eventMouseOut = function(ev)
+{
+	// Remove cursor ghost.
+	if (this.svgCursorGhost == null)
+		return;
+	
+	this.cursorGhostTick = this.updateSvgCursor(this.svgCursorGhost, null, 0);
+}
+
+
+Viewer.prototype.hideCursorPlayback = function(tick)
+{
+	this.cursorPlaybackTick = this.updateSvgCursor(this.svgCursorPlayback, null, new Rational(0));
+}
+
+
+Viewer.prototype.setCursorPlayback = function(tick)
+{
+	// TODO: Optimize.
+	var blockAtTick = this.getBlockAtTick(tick);
+	
+	var offset = blockAtTick == null ? new Rational(0) :
+		tick.clone().subtract(blockAtTick.start);
+	
+	this.cursorPlaybackTick = this.updateSvgCursor(this.svgCursorPlayback, blockAtTick, offset);
+}
+
+
+Viewer.prototype.updateSvgCursor = function(node, block, tickOffset)
+{
+	if (block == null)
+	{
+		editSvgNode(node, { x1: 0, y1: 0, x2: 0, y2: 0 });
+		return new Rational(0);
+	}
+	else
+	{
+		var cursorX = tickOffset.asFloat() * this.wholeTickWidth;
+		
+		editSvgNode(node,
+		{
+			x1: block.x + cursorX,
+			y1: block.y - 5,
+			x2: block.x + cursorX,
+			y2: block.y + block.height + 5
+		});
+		
+		return block.start.clone().add(tickOffset);
+	}
 }
 
 
@@ -21,6 +125,55 @@ Viewer.prototype.setSong = function(song)
 {
 	this.song = song;
 	this.refresh();
+}
+
+
+Viewer.prototype.getBlockAt = function(x, y)
+{
+	for (var i = 0; i < this.blocks.length; i++)
+	{
+		var block = this.blocks[i];
+		
+		// Only check the right and bottom boundaries,
+		// as to recognize the left and top margin space
+		// as part of the block.
+		// It works because this is a linear search loop.
+		if (x < block.x + block.width &&
+			y < block.rowY + block.rowHeight)
+		{
+			return block;
+		}
+	}
+	
+	return null;
+}
+
+
+Viewer.prototype.getBlockAtTick = function(tick)
+{
+	for (var i = 0; i < this.blocks.length; i++)
+	{
+		var block = this.blocks[i];
+		
+		if (tick.compare(block.end) < 0)
+			return block;
+	}
+	
+	return null;
+}
+
+
+Viewer.prototype.getTickOffset = function(x, snap)
+{
+	var offset = new Rational(0);
+	
+	while (offset.asFloat() * this.wholeTickWidth < x)
+		offset.add(snap);
+	
+	if (offset.compare(snap) >= 0)
+		offset.subtract(snap);
+	
+	return offset;
 }
 
 
@@ -34,16 +187,12 @@ Viewer.prototype.refresh = function()
 	while (this.svg.lastChild)
 		this.svg.removeChild(this.svg.lastChild);
 	
+	// Clear layout blocks.
+	this.blocks = [];
+	
 	// Early return if no song.
 	if (this.song == null)
 		return;
-	
-	// Sort song elements by tick.
-	this.song.notes.sort(function (a, b) { return a.startTick.compare(b.startTick); });
-	this.song.chords.sort(function (a, b) { return a.startTick.compare(b.startTick); });
-	this.song.keys.sort(function (a, b) { return a.tick.compare(b.tick); });
-	this.song.meters.sort(function (a, b) { return a.tick.compare(b.tick); });
-	this.song.measures.sort(function (a, b) { return a.compare(b); });
 	
 	// Prepare work data structure.
 	var data =
@@ -68,6 +217,20 @@ Viewer.prototype.refresh = function()
 	
 	// Resize SVG element for vertical scrolling to work.
 	this.svg.style.height = data.y + this.margin;
+	
+	// Add cursor elements with dummy parameters.
+	// Some of them will be updated in the event handlers for
+	// mouse interaction/playback.
+	this.svgCursor = this.addSvgNode("viewerCursor", "line", { x1: 0, y1: 0, x2: 0, y2: 0 });
+	this.svgCursorGhost = this.addSvgNode("viewerCursorGhost", "line", { x1: 0, y1: 0, x2: 0, y2: 0 });
+	this.svgCursorPlayback = this.addSvgNode("viewerCursorPlayback", "line", { x1: 0, y1: 0, x2: 0, y2: 0 });
+	
+	// Update cursor element.
+	var blockAtCursor = this.getBlockAtTick(this.cursorTick);
+	var cursorOffset = blockAtCursor == null ? new Rational(0) :
+		this.cursorTick.clone().subtract(blockAtCursor.start);
+		
+	this.updateSvgCursor(this.svgCursor, blockAtCursor, cursorOffset);
 }
 
 
@@ -263,6 +426,22 @@ Viewer.prototype.refreshRow = function(data)
 		var xStart = tickOffsetStart.asFloat() * this.wholeTickWidth;
 		var xEnd = tickOffsetEnd.asFloat() * this.wholeTickWidth;
 		
+		// Add block layout to master list.
+		// This is used for mouse interaction.
+		this.blocks.push(
+		{
+			start: blocks[i].start.clone(),
+			end: blocks[i].end.clone(),
+			key: blocks[i].key,
+			meter: blocks[i].meter,
+			rowY: data.y,
+			rowHeight: rowHeight,
+			x: this.margin + xStart,
+			y: data.y + blockYOffset,
+			width: xEnd - xStart,
+			height: blockHeight
+		});
+		
 		// Add the block's background.
 		this.addSvgNode("viewerBlockBackground", "rect",
 		{
@@ -384,6 +563,7 @@ Viewer.prototype.addSvgNode = function(cl, kind, attributes)
 	var node = makeSvgNode(kind, attributes);
 	node.setAttribute("class", cl);
 	this.svg.appendChild(node);
+	return node;
 }
 
 
@@ -402,4 +582,11 @@ function makeSvgNode(kind, attributes)
 	for (var attr in attributes)
 		node.setAttributeNS(null, attr, attributes[attr]);
 	return node;
+}
+
+
+function editSvgNode(node, attributes)
+{
+	for (var attr in attributes)
+		node.setAttributeNS(null, attr, attributes[attr]);
 }

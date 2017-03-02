@@ -83,6 +83,13 @@ CompilerParser.prototype.parse = function()
 	this.finishSegment(segmentData);
 	this.song.setLength(segmentData.segmentStartTick.clone());
 	
+	// Sort song elements by tick.
+	this.song.notes.sort(function (a, b) { return a.startTick.compare(b.startTick); });
+	this.song.chords.sort(function (a, b) { return a.startTick.compare(b.startTick); });
+	this.song.keys.sort(function (a, b) { return a.tick.compare(b.tick); });
+	this.song.meters.sort(function (a, b) { return a.tick.compare(b.tick); });
+	this.song.measures.sort(function (a, b) { return a.compare(b); });
+	
 	return this.song;
 }
 
@@ -112,6 +119,10 @@ CompilerParser.prototype.parseDirective = function(segmentData)
 			
 		case "meter":
 			this.parseDirectiveMeter(segmentData);
+			break;
+			
+		case "tempo":
+			this.parseDirectiveTempo(segmentData);
 			break;
 			
 		default:
@@ -155,6 +166,21 @@ CompilerParser.prototype.parseDirectiveMeter = function(segmentData)
 		
 	segmentData.currentMeter = new SongMeter(segmentData.segmentStartTick.clone(), numerator, denominator);
 	this.song.meterAdd(segmentData.currentMeter);
+}
+
+
+CompilerParser.prototype.parseDirectiveTempo = function(segmentData)
+{
+	var bpmString = this.lineReader.readInteger("expected beats per minute");
+	this.lineReader.skipWhitespace();
+	
+	var bpm = parseInt(bpmString);
+	if (isNaN(bpm) || !Theory.isValidBpm(bpm))
+		throw this.lineReader.makeError("invalid beats per minute '" + bpmString + "'");
+	
+	// TODO: Song tempo should be changeable
+	// throughout the music.
+	this.song.bpm = bpm;
 }
 
 

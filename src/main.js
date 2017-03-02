@@ -2,15 +2,20 @@ var codeEditor = null;
 var codeEditorLineWidgets = [];
 
 var viewer = null;
-
 var song = null;
+var synth = null;
+
+var songPlaying = false;
 
 
 function main()
 {
 	var elemSvgViewer = document.getElementById("svgViewer");
 	viewer = new Viewer(elemSvgViewer);
-	window.addEventListener("resize", function() { viewer.refresh(); });
+	window.onresize = function() { viewer.refresh(); };
+	window.onkeydown = function(ev) { onKeyDown(ev); };
+	
+	synth = new Synth();
 	
 	var elemDivCodeEditor = document.getElementById("divCode");
 	codeEditor = CodeMirror(elemDivCodeEditor,
@@ -23,7 +28,8 @@ function main()
 	
 	codeEditor.setValue(
 		"@key c\n" +
-		"@meter 4/4\n\n\n" +
+		"@meter 4/4\n" +
+		"@tempo 120\n\n\n" +
 		
 		"// tuplets and anacrusis\n" +
 		"0| :4:3 a3- a#3- b3- ||\n\n\n" +
@@ -94,5 +100,58 @@ function compile()
 	var parser = new CompilerParser(codeEditor.getValue(), msgReporter);
 	song = parser.parse();
 	
-	viewer.setSong(song);
+	if (!songPlaying)
+		viewer.setSong(song);
+}
+
+
+function togglePlay()
+{
+	songPlaying = !songPlaying;
+	
+	if (songPlaying)
+	{
+		synth.clear();
+		
+		if (song != null)
+			song.feedSynth(synth, viewer.cursorTick);
+		
+		viewer.setCursorPlayback(viewer.cursorTick);
+		var startTick = viewer.cursorTick.clone();
+		
+		synth.play(function(time)
+		{
+			// TODO: This doesn't belong here.
+			
+			// NOTE: Watch out for fixed song tempo,
+			// if that changes in the future.
+			
+			// Convert time in seconds to ticks.
+			var percentageOfWholeNote = time / (1000 / song.bpm / 4);
+			var tick = Rational.fromFloat(percentageOfWholeNote, new Rational(0, 1, 64));
+			tick.add(startTick);
+			
+			viewer.setCursorPlayback(tick);
+			
+			if (tick.compare(song.length) >= 0)
+				togglePlay();
+		});
+	}
+	else
+	{
+		synth.clear();
+		synth.stop();
+		viewer.hideCursorPlayback();
+		viewer.setSong(song);
+	}
+}
+
+
+function onKeyDown(ev)
+{
+	if (ev.ctrlKey && ev.keyCode == 32)
+	{
+		ev.preventDefault();
+		togglePlay();
+	}
 }

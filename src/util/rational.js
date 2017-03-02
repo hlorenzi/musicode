@@ -13,6 +13,17 @@ Rational.prototype.clone = function()
 }
 
 
+Rational.fromFloat = function(value, step)
+{
+	var rational = new Rational(Math.floor(value));
+	
+	while (rational.asFloat() < value)
+		rational.add(step);
+	
+	return rational;
+}
+
+
 Rational.prototype.toString = function()
 {	
 	if (this.integer == 0 && this.numerator == 0)

@@ -58,6 +58,12 @@ Theory.isValidOctave = function(octave)
 }
 
 
+Theory.isValidBpm = function(bpm)
+{
+	return bpm >= 1 && bpm <= 999;
+}
+
+
 Theory.isValidMeterNumerator = function(numerator)
 {
 	return numerator >= 1 && numerator <= 256;

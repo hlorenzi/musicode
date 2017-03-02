@@ -36,6 +36,13 @@ body
 	width: 100%;
 }
 
+#tempPlaybackLabel
+{
+	margin-left: 10px;
+	font-family: Verdana, sans-serif;
+	font-size: 12px;
+}
+
 .CodeMirror
 {
 	border: 1px solid gray;
@@ -88,13 +95,13 @@ body
 
 .viewerMeterLine
 {
-	stroke: #04f;
+	stroke: #0af;
 	stroke-width: 2px;
 }
 
 .viewerMeterLabel
 {
-	fill: #04f;
+	fill: #0af;
 	font-family: Verdana, sans-serif;
 	font-size: 12px;
 	text-align: left;
@@ -114,4 +121,22 @@ body
 	font-size: 12px;
 	text-align: left;
 	alignment-baseline: middle;
+}
+
+.viewerCursor
+{
+	stroke: blue;
+	stroke-width: 2px;
+}
+
+.viewerCursorGhost
+{
+	stroke: rgba(0, 0, 255, 0.25);
+	stroke-width: 2px;
+}
+
+.viewerCursorPlayback
+{
+	stroke: red;
+	stroke-width: 2px;
 }
