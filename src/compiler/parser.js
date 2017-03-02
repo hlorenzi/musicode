@@ -244,7 +244,7 @@ CompilerParser.prototype.parseNoteTrack = function(segmentData, trackIndex, subT
 		notes: [],
 		currentMeasureStartTick: segmentData.firstMeasureStartTick.clone(),
 		currentTick: segmentData.segmentStartTick.clone(),
-		baseDuration: new Rational(0, 1, 4)
+		baseDuration: segmentData.currentMeter.getBeatLength()
 	};
 	
 	while (!this.lineReader.isOver())

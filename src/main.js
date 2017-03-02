@@ -55,12 +55,12 @@ function main()
 		"// meter changes\n" +
 		"@meter 11/8\n\n" +
 		
-		"0| :8 c#5 c5 c#5 c5 c#5 c5 c#5 c5 c#5 c5 c#5 |\n\n\n" +
+		"0| c#5 c5 c#5 c5 c#5 c5 c#5 c5 c#5 c5 c#5 |\n\n\n" +
 		
 		"// key changes\n" +
 		"@key e\n\n" +
 		
-		"0| e5 g#5 b4. g#4. b4. c5-- |\n\n\n" +
+		"0| e5-- g#5-- b4 g#4 b4 c5---- |\n\n\n" +
 		
 		"@meter 5/4\n\n" +
 		
