@@ -36,39 +36,46 @@ function main()
 		
 		"// each group of lines defines a segment of music,\n" +
 		"// usually one or more complete measures\n" +
-		"0| c d e f |\n\n\n" +
+		"0| c d e f |\n" +
+		"h| I-- vim-- |\n\n\n" +
 		
 		"// rests and different durations\n" +
-		"0| g-- _- a. a#, b, |\n\n\n" +
+		"0| g-- _- a. a#, b, |\n" +
+		"h| V7---- |\n\n\n" +
 		
 		"// simultaneous notes\n" +
-		"0| :1 > c |\n" +
-		"0| :1   g |\n" +
-		"0| :1   d |\n\n\n" +
+		"0| :1 > c     |\n" +
+		"0| :1   g     |\n" +
+		"0| :1   d     |\n" +
+		"h| :1   Isus2 |\n\n\n" +
 		
 		"// note extensions from previous measure\n" +
 		"// (works with simultaneous tracks)\n" +
 		"0| ---- |\n" +
 		"0| -- _-- |\n" +
-		"0| e---- |\n\n\n" +
+		"0| e---- |\n" +
+		"h| I---- |\n\n\n" +
 		
 		"// meter changes\n" +
 		"@meter 11/8\n\n" +
 		
-		"0| > c# c c# c c# c c# c c# c c# |\n\n\n" +
+		"0| > c# c c# c c# c c# c c# c c# |\n" +
+		"h|   io7----------- |\n\n\n" +
 		
 		"// key changes\n" +
 		"@key e5\n\n" +
 		
-		"0| e-- g#-- < b g# b c---- |\n\n\n" +
+		"0| e-- g#-- < b g# b c---- |\n" +
+		"h| I------- bVI---- |\n\n\n" +
 		
+		"@key c5\n" +
 		"@meter 5/4\n\n" +
 		
-		"0| < b----- |\n\n" +
+		"0| < b ----- |\n" +
+		"h|   V7----- |\n\n" +
 		
-		"@key c5\n\n" +
-		
-		"0| c----- |");
+		"0| c----- |\n" +
+		"h| I----- |");
 		
 	codeEditor.focus();
 }

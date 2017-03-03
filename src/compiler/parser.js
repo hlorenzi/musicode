@@ -134,12 +134,14 @@ CompilerParser.prototype.parseDirective = function(segmentData)
 CompilerParser.prototype.parseDirectiveKey = function(segmentData)
 {
 	// Parse the tonic pitch.
-	var tonicString = this.lineReader.readNoteName("expected tonic pitch");
+	var tonicString = this.lineReader.readAbsolutePitchName("expected tonic pitch");
 	this.lineReader.skipWhitespace();
 	
-	var tonic = Theory.decodeRelativeNoteName(tonicString);
+	var tonic = Theory.decodeAbsoluteNoteName(tonicString);
 	if (tonic == null)
 		throw this.lineReader.makeError("invalid tonic pitch '" + tonicString + "'");
+	
+	tonic = Theory.getTruncatedPitchFromPitch(tonic);
 	
 	// Parse an octave, if there is one.
 	var octaveString = "5";
@@ -208,55 +210,88 @@ CompilerParser.prototype.parseDirectiveTempo = function(segmentData)
 
 CompilerParser.prototype.parseTrack = function(segmentData)
 {
-	// Read track index.
-	var trackIndexString = this.lineReader.readInteger("expected track index");
-	this.lineReader.skipWhitespace();
+	var trackData = null;
 	
-	var trackIndex = parseInt(trackIndexString);
-	if (isNaN(trackIndex) || trackIndex < 0 || trackIndex >= this.trackNum)
-		throw this.lineReader.makeError("invalid track '" + trackIndexString + "'");
+	// Check if this is a note/melody track (numbered track).
+	if (this.lineReader.charIsNumber(this.lineReader.currentChar()))
+	{
+		var trackIndexString = this.lineReader.readInteger("unreachable: expected track index");
+		this.lineReader.skipWhitespace();
+		
+		var trackIndex = parseInt(trackIndexString);
+		if (isNaN(trackIndex) || trackIndex < 0 || trackIndex >= this.trackNum)
+			throw this.lineReader.makeError("invalid track '" + trackIndexString + "'");
+		
+		// Read index separator according to whether
+		// the previous measure terminator was continuable.
+		if (segmentData.lastMeasureTerminatorWasContinuable)
+			this.lineReader.match('~', "expected measure continuation '~'");
+		else
+			this.lineReader.match('|', "expected measure start '|'");
+		
+		this.lineReader.skipWhitespace();
+		
+		// Find out what subtrack index this is.
+		// This is the number of times this track has
+		// appeared within the current segment
+		// (i.e. simultaneous notes).
+		var subTrackIndex = 0;
+		var subTracks = segmentData.noteTracks[trackIndex];
+		if (subTracks != undefined)
+			subTrackIndex = subTracks.length;
+		
+		if (segmentData.lastNoteByTrack[trackIndex] == undefined)
+			segmentData.lastNoteByTrack[trackIndex] = [];
+		
+		// Parse note track data.
+		trackData = this.parseTrackNotes(segmentData, trackIndex, subTrackIndex);
+		
+		// Add track to segment.
+		if (segmentData.noteTracks[trackIndex] == undefined)
+			segmentData.noteTracks[trackIndex] = [];
+		
+		segmentData.noteTracks[trackIndex].push(trackData);
+	}
 	
-	// Read index separator according to whether
-	// the previous measure terminator was continuable.
-	if (segmentData.lastMeasureTerminatorWasContinuable)
-		this.lineReader.match('~', "expected measure continuation '~'");
+	// Check if this is a chord/harmony track ('h').
+	else if (this.lineReader.currentChar().toLowerCase() == 'h')
+	{
+		// Check if there was already a chord track within this segment.
+		if (segmentData.chordTrack != null)
+			throw this.lineReader.makeError("duplicate harmony track");
+		
+		this.lineReader.advance();
+		this.lineReader.skipWhitespace();
+		
+		// Read index separator according to whether
+		// the previous measure terminator was continuable.
+		if (segmentData.lastMeasureTerminatorWasContinuable)
+			this.lineReader.match('~', "expected measure continuation '~'");
+		else
+			this.lineReader.match('|', "expected measure start '|'");
+		
+		this.lineReader.skipWhitespace();
+		
+		// Parse chord track data.
+		trackData = this.parseTrackChords(segmentData, trackIndex, subTrackIndex);
+		
+		// Add track to segment.
+		segmentData.chordTrack = trackData;
+	}
+	
 	else
-		this.lineReader.match('|', "expected measure start '|'");
-	
-	this.lineReader.skipWhitespace();
-	
-	// Find out what subtrack index this is.
-	// This is the number of times this track has
-	// appeared within the current segment
-	// (i.e. simultaneous notes).
-	var subTrackIndex = 0;
-	var subTracks = segmentData.noteTracks[trackIndex];
-	if (subTracks != undefined)
-		subTrackIndex = subTracks.length;
-	
-	if (segmentData.lastNoteByTrack[trackIndex] == undefined)
-		segmentData.lastNoteByTrack[trackIndex] = [];
-	
-	// Parse track data.
-	// TODO: Parse other types of tracks.
-	var trackData = this.parseNoteTrack(segmentData, trackIndex, subTrackIndex);
-	
-	// Add track to segment.
-	if (segmentData.noteTracks[trackIndex] == undefined)
-		segmentData.noteTracks[trackIndex] = [];
-	
-	segmentData.noteTracks[trackIndex].push(trackData);
+		throw this.lineReader.makeError("expected track");
 	
 	// Verify measure terminator alignment within this segment,
 	// or, if this is the first track in the segment,
 	// set its measure terminators as the ones to be matched.
-	// TODO: Verify measure terminator alignment.
+	// TODO: Actually verify measure terminator alignment.
 	if (segmentData.measureTerminatorsToMatch == null)
 		segmentData.measureTerminatorsToMatch = trackData.measureTerminators;
 }
 
 
-CompilerParser.prototype.parseNoteTrack = function(segmentData, trackIndex, subTrackIndex)
+CompilerParser.prototype.parseTrackNotes = function(segmentData, trackIndex, subTrackIndex)
 {
 	var trackData =
 	{
@@ -321,9 +356,77 @@ CompilerParser.prototype.parseNoteTrack = function(segmentData, trackIndex, subT
 				trackData.currentTick.add(note.duration);
 				
 				// Register note.
-				var songNote = new SongNote(startTick, trackData.currentTick.clone(), trackIndex, note.pitch);
+				var songNote = new SongNote(
+					startTick, trackData.currentTick.clone(),
+					trackIndex, note.pitch);
+				
 				trackData.notes.push(songNote);
 				segmentData.lastNoteByTrack[trackIndex][subTrackIndex] = songNote;
+			}
+		}
+		
+		// Parse a measure terminator.
+		this.parseTrackMeasureTerminator(segmentData, trackData);
+	}
+	
+	return trackData;
+}
+
+
+CompilerParser.prototype.parseTrackChords = function(segmentData)
+{
+	var trackData =
+	{
+		measureTerminators: [],
+		chords: [],
+		currentMeasureStartTick: segmentData.firstMeasureStartTick.clone(),
+		currentTick: segmentData.segmentStartTick.clone(),
+		baseDuration: segmentData.currentMeter.getBeatLength()
+	};
+	
+	while (!this.lineReader.isOver())
+	{
+		// Parse as many chords as there are.
+		while (true)
+		{
+			// Check if there is a duration specifier.
+			if (this.lineReader.currentChar() == ':')
+				this.parseDurationSpecifier(trackData);
+			
+			// Check if there is a stray duration multiplier,
+			// which will extend the previous chord.
+			else if (this.lineReader.currentChar() == '-' ||
+			    this.lineReader.currentChar() == '.' ||
+			    this.lineReader.currentChar() == ',' ||
+			    this.lineReader.currentChar() == ';')
+			{
+				if (segmentData.lastChord == null)
+					throw this.lineReader.makeError("invalid chord extension");
+				
+				var extension = this.parseChordExtension(segmentData, trackData);
+				
+				// Update tick for the next chord.
+				trackData.currentTick.add(extension.duration);
+			}
+			
+			// Or else, parse a chord start.
+			else
+			{
+				var chord = this.parseChord(segmentData, trackData);
+				if (chord == null)
+					break;
+				
+				// Update tick for the next chord.
+				var startTick = trackData.currentTick.clone();
+				trackData.currentTick.add(chord.duration);
+				
+				// Register chord.
+				var songChord = new SongChord(
+					startTick, trackData.currentTick.clone(),
+					chord.chordKind, chord.rootPitch, chord.embelishments);
+				
+				trackData.chords.push(songChord);
+				segmentData.lastChord = songChord;
 			}
 		}
 		
@@ -433,45 +536,48 @@ CompilerParser.prototype.parseNote = function(segmentData, trackData)
 		this.lineReader.advance();
 	}
 	
-	// Check if it's an absolute note name.
+	// Check if it's really a note name.
 	else if (this.lineReader.charIsNoteName(this.lineReader.currentChar()))
 	{
-		var pitchString = this.lineReader.readNoteName("unreachable: expected note pitch");
+		var noteString = this.lineReader.readNoteName("unreachable: expected note name");
 		
-		pitch = Theory.decodeRelativeNoteName(pitchString);
-		if (pitch == null)
-			throw this.lineReader.makeError("invalid note pitch '" + pitchString + "'");
+		// Check if it's a relative note name.
+		if (Theory.isNoteRelativeInsteadOfAbsolute(noteString))
+		{
+			var degree = Theory.decodeRelativeNoteName(noteString);
+			if (degree == null)
+				throw this.lineReader.makeError("invalid relative note '" + noteString + "'");
+			
+			this.lineReader.skipWhitespace();
+			
+			// Calculate final pitch taking into consideration
+			// the current key's tonic and the current octave offset.
+			pitch = degree + segmentData.currentKey.tonicMidiPitch + 12 * trackData.currentOctaveOffset;
+			if (!Theory.isValidMidiPitch(pitch))
+				throw this.lineReader.makeError("note pitch out of bounds");
+		}
 		
-		this.lineReader.skipWhitespace();
-		
-		// Calculate final pitch taking into consideration
-		// the current key's tonic and the current octave offset.
-		if (pitch < segmentData.currentKey.tonicMidiPitch % 12)
-			pitch += 12;
-		
-		pitch += 12 * (trackData.currentOctaveOffset + Math.floor(segmentData.currentKey.tonicMidiPitch / 12));
-		if (!Theory.isValidMidiPitch(pitch))
-			throw this.lineReader.makeError("note pitch out of bounds");
+		// Else, it's an absolute pitch name.
+		else
+		{
+			pitch = Theory.decodeAbsoluteNoteName(noteString);
+			if (pitch == null)
+				throw this.lineReader.makeError("invalid absolute note '" + noteString + "'");
+			
+			this.lineReader.skipWhitespace();
+			
+			// Calculate final pitch taking into consideration
+			// the current key's tonic and the current octave offset.
+			pitch = Theory.getTruncatedPitchFromPitch(pitch);
+			if (pitch < segmentData.currentKey.tonicMidiPitch % 12)
+				pitch += 12;
+			
+			pitch += 12 * (trackData.currentOctaveOffset + Math.floor(segmentData.currentKey.tonicMidiPitch / 12));
+			if (!Theory.isValidMidiPitch(pitch))
+				throw this.lineReader.makeError("note pitch out of bounds");
+		}
 	}
-	
-	// Check if it's a degree name.
-	else if (this.lineReader.charIsDegreeName(this.lineReader.currentChar()))
-	{
-		var degreeString = this.lineReader.readDegreeName("unreachable: expected note degree");
-		
-		var degree = Theory.decodeDegreeName(degreeString);
-		if (degree == null)
-			throw this.lineReader.makeError("invalid note degree '" + degreeString + "'");
-		
-		this.lineReader.skipWhitespace();
-		
-		// Calculate final pitch taking into consideration
-		// the current key's tonic and the current octave offset.
-		pitch = degree + segmentData.currentKey.tonicMidiPitch + 12 * trackData.currentOctaveOffset;
-		if (!Theory.isValidMidiPitch(pitch))
-			throw this.lineReader.makeError("note pitch out of bounds");
-	}
-	
+
 	else
 		return null;
 	
@@ -506,6 +612,96 @@ CompilerParser.prototype.parseNoteExtension = function(segmentData, trackData, t
 	
 	var duration = trackData.baseDuration.clone().multiply(durationMultiplier);
 	segmentData.lastNoteByTrack[trackIndex][subTrackIndex].endTick.add(duration);
+	
+	return { duration: duration };
+}
+
+
+CompilerParser.prototype.parseChord = function(segmentData, trackData)
+{
+	var rootPitch = null;
+	
+	// Check if it's a rest.
+	if (this.lineReader.currentChar() == '_')
+	{
+		this.lineReader.advance();
+	}
+	
+	// Check if it's really a chord name.
+	else if (this.lineReader.charIsChordName(this.lineReader.currentChar()))
+	{
+		var chordString = this.lineReader.readChordName("unreachable: expected chord name");
+		
+		// Check if it's a relative chord name.
+		if (Theory.isChordRelativeInsteadOfAbsolute(chordString))
+		{
+			var degree = Theory.decodeRelativeChordName(chordString);
+			if (degree == null)
+				throw this.lineReader.makeError("invalid relative chord '" + chordString + "'");
+			
+			rootPitch = Theory.getTruncatedPitchFromPitch(segmentData.currentKey.tonicMidiPitch + degree);
+		}
+		
+		// Else, it's an absolute chord name.
+		else
+		{
+			rootPitch = Theory.decodeAbsoluteChordName(chordString);
+			if (rootPitch == null)
+				throw this.lineReader.makeError("invalid absolute chord '" + chordString + "'");
+			
+			rootPitch = Theory.getTruncatedPitchFromPitch(rootPitch);
+		}
+	}
+
+	else
+		return null;
+	
+	// Parse the chord kind, if there is one.
+	// Use Major chord as default.
+	var chordKind = 0;
+	if (rootPitch != null &&
+		this.lineReader.charIsChordKindName(this.lineReader.currentChar()))
+	{
+		var chordKindString = this.lineReader.readChordKindName("unreachable: expected chord kind");
+		
+		chordKind = Theory.decodeChordKindName(chordKindString);
+		if (chordKind == null)
+			throw this.lineReader.makeError("invalid chord kind '" + chordKindString + "'");
+	}
+	
+	this.lineReader.skipWhitespace();
+	
+	// Check if there is a duration multiplier to parse,
+	// or else use the base duration.
+	var durationMultiplier = new Rational(1);
+	
+	if (this.lineReader.currentChar() == '-' ||
+		this.lineReader.currentChar() == '.' ||
+		this.lineReader.currentChar() == ',' ||
+		this.lineReader.currentChar() == ';')
+	{
+		durationMultiplier = this.parseDurationMultiplier();
+		if (durationMultiplier == null)
+			throw this.lineReader.makeError("expected note duration");
+	}
+	
+	return {
+		rootPitch: rootPitch,
+		chordKind: chordKind,
+		embelishments: [],
+		duration: trackData.baseDuration.clone().multiply(durationMultiplier)
+	};
+}
+
+
+CompilerParser.prototype.parseChordExtension = function(segmentData, trackData)
+{
+	var durationMultiplier = this.parseDurationMultiplier();
+	if (durationMultiplier == null)
+		throw this.lineReader.makeError("expected chord duration");
+	
+	var duration = trackData.baseDuration.clone().multiply(durationMultiplier);
+	segmentData.lastChord.endTick.add(duration);
 	
 	return { duration: duration };
 }
@@ -591,6 +787,12 @@ CompilerParser.prototype.finishSegment = function(segmentData)
 			for (var k = 0; k < track.notes.length; k++)
 				this.song.noteAdd(track.notes[k]);
 		}
+	}
+	
+	if (segmentData.chordTrack != null)
+	{
+		for (var i = 0; i < segmentData.chordTrack.chords.length; i++)
+			this.song.chordAdd(segmentData.chordTrack.chords[i]);
 	}
 	
 	// TODO: Clear lastNoteByTrack list for any subtrack

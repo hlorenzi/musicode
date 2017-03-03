@@ -86,11 +86,101 @@ body
 	stroke-width: 2px;
 }
 
-.viewerNote
+.viewerDegree0
 {
-	stroke: rgba(0, 0, 0, 0);
 	stroke-width: 0px;
-	fill: red;
+	fill: #f00;
+}
+
+.viewerDegree1
+{
+	stroke-width: 0px;
+	fill: #f40;
+}
+
+.viewerDegree2
+{
+	stroke-width: 0px;
+	fill: #f80;
+}
+
+.viewerDegree3
+{
+	stroke-width: 0px;
+	fill: #fa0;
+}
+
+.viewerDegree4
+{
+	stroke-width: 0px;
+	fill: #fd0;
+}
+
+.viewerDegree5
+{
+	stroke-width: 0px;
+	fill: #0d0;
+}
+
+.viewerDegree6
+{
+	stroke-width: 0px;
+	fill: #068;
+}
+
+.viewerDegree7
+{
+	stroke-width: 0px;
+	fill: #00f;
+}
+
+.viewerDegree8
+{
+	stroke-width: 0px;
+	fill: #40f;
+}
+
+.viewerDegree9
+{
+	stroke-width: 0px;
+	fill: #80f;
+}
+
+.viewerDegree10
+{
+	stroke-width: 0px;
+	fill: #a0f;
+}
+
+.viewerDegree11
+{
+	stroke-width: 0px;
+	fill: #f0f;
+}
+
+.viewerChordBackground
+{
+	stroke-width: 0px;
+	fill: white;
+}
+
+.viewerChordLabel
+{
+	fill: black;
+	font-family: Verdana, sans-serif;
+	font-size: 20px;
+	text-anchor: middle;
+	alignment-baseline: central;
+}
+
+.viewerChordLabelSuperscript
+{
+	fill: black;
+	font-family: Verdana, sans-serif;
+	font-size: 14px;
+	text-anchor: middle;
+	alignment-baseline: central;
+	baseline-shift: super;
 }
 
 .viewerMeterLine
@@ -104,7 +194,7 @@ body
 	fill: #0af;
 	font-family: Verdana, sans-serif;
 	font-size: 12px;
-	text-align: left;
+	text-anchor: left;
 	alignment-baseline: middle;
 }
 
@@ -119,7 +209,7 @@ body
 	fill: #f04;
 	font-family: Verdana, sans-serif;
 	font-size: 12px;
-	text-align: left;
+	text-anchor: left;
 	alignment-baseline: middle;
 }
 

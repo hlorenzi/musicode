@@ -28,6 +28,9 @@ function Viewer(svg)
 	this.wholeTickWidth = 100;
 	this.noteHeight = 5;
 	this.noteSideMargin = 0.5;
+	this.chordHeight = 50;
+	this.chordSideMargin = 0.5;
+	this.chordOrnamentHeight = 5;
 }
 
 
@@ -205,6 +208,7 @@ Viewer.prototype.refresh = function()
 		nextMeasure: 0,
 		nextNote: 0,
 		unterminatedNotes: [],
+		nextChord: 0,
 		
 		y: this.margin
 	};
@@ -385,7 +389,25 @@ Viewer.prototype.refreshRow = function(data)
 		}
 	}
 	
+	// Find out the chords contained in this row.
+	var chords = [];
+	{
+		// Check for new chords.
+		while (data.nextChord < this.song.chords.length &&
+			this.song.chords[data.nextChord].startTick.compare(rowEndTick) < 0)
+		{
+			var chord = this.song.chords[data.nextChord];
+			chords.push(chord);
+			
+			if (this.song.chords[data.nextChord].endTick.compare(rowEndTick) > 0)
+				break;
+			
+			data.nextChord += 1;
+		}
+	}
+	
 	// Find the lowest and highest pitches for notes in this row.
+	var rowHasNotes = false;
 	var midiPitchMin = this.defaultNoteMidiPitchMin;
 	var midiPitchMax = this.defaultNoteMidiPitchMax;
 	for (var i = 0; i < notes.length; i++)
@@ -393,11 +415,23 @@ Viewer.prototype.refreshRow = function(data)
 		if (notes[i].midiPitch == null)
 			continue;
 		
+		rowHasNotes = true;
 		midiPitchMin = Math.min(notes[i].midiPitch, midiPitchMin);
 		midiPitchMax = Math.max(notes[i].midiPitch, midiPitchMax);
 	}
 	
-	// Check if there's any key/meter changes in this row.
+	// Check if there are any chords in this row.
+	var rowHasChords = false;
+	for (var i = 0; i < chords.length; i++)
+	{
+		if (chords[i].rootMidiPitch != null)
+		{
+			rowHasChords = true;
+			break;
+		}
+	}
+	
+	// Check if there are any key/meter changes in this row.
 	var rowHasKeyChange = false;
 	var rowHasMeterChange = false;
 	for (var i = 0; i < blocks.length; i++)
@@ -411,10 +445,12 @@ Viewer.prototype.refreshRow = function(data)
 	var keyChangeStaffHeight = (rowHasKeyChange ? 20 : 0);
 	var meterChangeStaffYOffset = keyChangeStaffHeight;
 	var meterChangeStaffHeight = (rowHasMeterChange ? 20 : 0);
-	var noteStaffYOffset = keyChangeStaffHeight + meterChangeStaffHeight;
-	var noteStaffHeight = (midiPitchMax + 1 - midiPitchMin) * this.noteHeight;
 	var blockYOffset = keyChangeStaffHeight + meterChangeStaffHeight;
-	var blockHeight = noteStaffHeight;
+	var noteStaffYOffset = blockYOffset;
+	var noteStaffHeight = (rowHasNotes ? (midiPitchMax + 1 - midiPitchMin) * this.noteHeight : 0);
+	var chordStaffYOffset = blockYOffset + noteStaffHeight;
+	var chordStaffHeight = (rowHasChords ? this.chordHeight : 0);
+	var blockHeight = noteStaffHeight + chordStaffHeight;
 	var rowHeight = blockYOffset + blockHeight;
 	
 	// Render blocks.
@@ -474,19 +510,150 @@ Viewer.prototype.refreshRow = function(data)
 			});
 		}
 		
-		// Add the block's frame.
+		// Render notes.
+		// TODO: Optimize linear search away.
+		for (var j = 0; j < notes.length; j++)
+		{
+			if (notes[j].midiPitch == null)
+				continue;
+			
+			if (notes[j].startTick.compare(blocks[i].end) >= 0)
+				continue;
+			
+			if (notes[j].endTick.compare(blocks[i].start) <= 0)
+				continue;
+			
+			var noteTickOffsetStart = notes[j].startTick.clone().subtract(blocks[i].start);
+			var noteTickOffsetEnd = notes[j].endTick.clone().subtract(blocks[i].start);
+			
+			if (noteTickOffsetStart.compare(new Rational(0)) < 0)
+				noteTickOffsetStart = new Rational(0);
+			
+			if (notes[j].endTick.compare(blocks[i].end) > 0)
+				noteTickOffsetEnd = blocks[i].end.clone().subtract(blocks[i].start);
+			
+			var noteXStart = noteTickOffsetStart.asFloat() * this.wholeTickWidth;
+			var noteXEnd = noteTickOffsetEnd.asFloat() * this.wholeTickWidth;
+			
+			var midiPitchOffset = notes[j].midiPitch - midiPitchMin;
+			var noteYTop = noteStaffYOffset + noteStaffHeight - (midiPitchOffset + 1) * this.noteHeight;
+			
+			var noteDegree = Theory.getTruncatedPitchFromPitch(
+				notes[j].midiPitch - blocks[i].key.tonicMidiPitch);
+			
+			this.addSvgNode("viewerDegree" + noteDegree, "rect",
+			{
+				x: this.margin + xStart + noteXStart + this.noteSideMargin,
+				y: data.y + noteYTop,
+				width: noteXEnd - noteXStart - this.noteSideMargin * 2,
+				height: this.noteHeight
+			});
+		}
+		
+		// Render chords.
+		// TODO: Optimize linear search away.
+		for (var j = 0; j < chords.length; j++)
+		{
+			if (chords[j].rootMidiPitch == null)
+				continue;
+			
+			if (chords[j].startTick.compare(blocks[i].end) >= 0)
+				continue;
+			
+			if (chords[j].endTick.compare(blocks[i].start) <= 0)
+				continue;
+			
+			var chordTickOffsetStart = chords[j].startTick.clone().subtract(blocks[i].start);
+			var chordTickOffsetEnd = chords[j].endTick.clone().subtract(blocks[i].start);
+			
+			if (chordTickOffsetStart.compare(new Rational(0)) < 0)
+				chordTickOffsetStart = new Rational(0);
+			
+			if (chords[j].endTick.compare(blocks[i].end) > 0)
+				chordTickOffsetEnd = blocks[i].end.clone().subtract(blocks[i].start);
+			
+			var chordXStart = chordTickOffsetStart.asFloat() * this.wholeTickWidth;
+			var chordXEnd = chordTickOffsetEnd.asFloat() * this.wholeTickWidth;
+			
+			var chordDegree = Theory.getTruncatedPitchFromPitch(
+				chords[j].rootMidiPitch - blocks[i].key.tonicMidiPitch);
+			
+			this.addSvgNode("viewerChordBackground", "rect",
+			{
+				x: this.margin + xStart + chordXStart + this.chordSideMargin,
+				y: data.y + chordStaffYOffset,
+				width: chordXEnd - chordXStart - this.chordSideMargin * 2,
+				height: chordStaffHeight
+			});
+			
+			this.addSvgNode("viewerDegree" + chordDegree, "rect",
+			{
+				x: this.margin + xStart + chordXStart + this.chordSideMargin,
+				y: data.y + chordStaffYOffset,
+				width: chordXEnd - chordXStart - this.chordSideMargin * 2,
+				height: this.chordOrnamentHeight
+			});
+			
+			this.addSvgNode("viewerDegree" + chordDegree, "rect",
+			{
+				x: this.margin + xStart + chordXStart + this.chordSideMargin,
+				y: data.y + chordStaffYOffset + chordStaffHeight - this.chordOrnamentHeight,
+				width: chordXEnd - chordXStart - this.chordSideMargin * 2,
+				height: this.chordOrnamentHeight
+			});
+			
+			// Build and add the chord label.
+			var chordLabel = Theory.getChordRootLabel(blocks[i].key.scale, chordDegree);
+			if (Theory.chordKinds[chords[j].chordKindIndex].symbol[0])
+				chordLabel = chordLabel.toLowerCase();
+			
+			chordLabel += Theory.chordKinds[chords[j].chordKindIndex].symbol[1];
+			
+			var chordLabelSuperscript = Theory.chordKinds[chords[j].chordKindIndex].symbol[2]; 
+			
+			var svgChordLabel = this.addSvgTextComplemented(
+				"viewerChordLabel",
+				"viewerChordLabelSuperscript",
+				chordLabel,
+				chordLabelSuperscript,
+				{
+					x: this.margin + xStart + chordXStart + (chordXEnd - chordXStart) / 2,
+					y: data.y + chordStaffYOffset + chordStaffHeight / 2
+				});
+			
+			// Narrow text if it overflows the space.
+			if (svgChordLabel.getComputedTextLength() > chordXEnd - chordXStart)
+			{
+				editSvgNode(svgChordLabel,
+				{
+					textLength: chordXEnd - chordXStart,
+					lengthAdjust: "spacingAndGlyphs"
+				});
+			}
+		}
+		
+		// Add the block's melody frame.
 		this.addSvgNode("viewerBlockFrame", "rect",
 		{
 			x: this.margin + xStart,
-			y: data.y + blockYOffset,
+			y: data.y + noteStaffYOffset,
 			width: xEnd - xStart,
-			height: blockHeight
+			height: noteStaffHeight
+		});
+		
+		// Add the block's chord frame.
+		this.addSvgNode("viewerBlockFrame", "rect",
+		{
+			x: this.margin + xStart,
+			y: data.y + chordStaffYOffset,
+			width: xEnd - xStart,
+			height: chordStaffHeight
 		});
 		
 		// Add a key change indicator, if there is one.
 		if (blocks[i].key.tick.compare(blocks[i].start) == 0)
 		{
-			var svgBeat = this.addSvgNode("viewerKeyLine", "line",
+			this.addSvgNode("viewerKeyLine", "line",
 			{
 				x1: this.margin + xStart,
 				y1: data.y + keyChangeStaffYOffset,
@@ -494,18 +661,17 @@ Viewer.prototype.refreshRow = function(data)
 				y2: data.y + blockYOffset + blockHeight
 			});
 			
-			var svgBeat = this.addSvgText("viewerKeyLabel",
-				blocks[i].key.getLabel(),
-				{
-					x: this.margin + xStart + 5,
-					y: data.y + keyChangeStaffYOffset + keyChangeStaffHeight / 2
-				});
+			this.addSvgText("viewerKeyLabel", blocks[i].key.getLabel(),
+			{
+				x: this.margin + xStart + 5,
+				y: data.y + keyChangeStaffYOffset + keyChangeStaffHeight / 2
+			});
 		}
 		
 		// Add a meter change indicator, if there is one.
 		if (blocks[i].meter.tick.compare(blocks[i].start) == 0)
 		{
-			var svgBeat = this.addSvgNode("viewerMeterLine", "line",
+			this.addSvgNode("viewerMeterLine", "line",
 			{
 				x1: this.margin + xStart,
 				y1: data.y + meterChangeStaffYOffset,
@@ -513,43 +679,12 @@ Viewer.prototype.refreshRow = function(data)
 				y2: data.y + blockYOffset + blockHeight
 			});
 			
-			var svgBeat = this.addSvgText("viewerMeterLabel",
-				blocks[i].meter.getLabel(),
-				{
-					x: this.margin + xStart + 5,
-					y: data.y + meterChangeStaffYOffset + meterChangeStaffHeight / 2
-				});
+			this.addSvgText("viewerMeterLabel", blocks[i].meter.getLabel(),
+			{
+				x: this.margin + xStart + 5,
+				y: data.y + meterChangeStaffYOffset + meterChangeStaffHeight / 2
+			});
 		}
-	}
-	
-	// Render notes.
-	for (var i = 0; i < notes.length; i++)
-	{
-		if (notes[i].midiPitch == null)
-			continue;
-		
-		var tickOffsetStart = notes[i].startTick.clone().subtract(rowStartTick);
-		var tickOffsetEnd = notes[i].endTick.clone().subtract(rowStartTick);
-		
-		if (tickOffsetStart.compare(new Rational(0)) < 0)
-			tickOffsetStart = new Rational(0);
-		
-		if (notes[i].endTick.compare(rowEndTick) > 0)
-			tickOffsetEnd = rowLengthInTicks.clone();
-		
-		var xStart = tickOffsetStart.asFloat() * this.wholeTickWidth;
-		var xEnd = tickOffsetEnd.asFloat() * this.wholeTickWidth;
-		
-		var midiPitchOffset = notes[i].midiPitch - midiPitchMin;
-		var yTop = noteStaffYOffset + noteStaffHeight - (midiPitchOffset + 1) * this.noteHeight;
-		
-		this.addSvgNode("viewerNote", "rect",
-		{
-			x: this.margin + xStart + this.noteSideMargin,
-			y: data.y + yTop,
-			width: xEnd - xStart - this.noteSideMargin * 2,
-			height: this.noteHeight
-		});
 	}
 	
 	// Update row-persistent variables.
@@ -573,6 +708,23 @@ Viewer.prototype.addSvgText = function(cl, text, attributes)
 	node.setAttribute("class", cl);
 	node.innerHTML = text;
 	this.svg.appendChild(node);
+	return node;
+}
+
+
+Viewer.prototype.addSvgTextComplemented = function(cl, clSuperscript, text, textSuperscript, attributes)
+{
+	var nodeSuperscript = makeSvgNode("tspan", { "baseline-shift": "super" });
+	nodeSuperscript.setAttribute("class", clSuperscript);
+	nodeSuperscript.innerHTML = textSuperscript;
+	
+	var node = makeSvgNode("text", attributes);
+	node.setAttribute("class", cl);
+	node.innerHTML = text;
+	
+	node.appendChild(nodeSuperscript);
+	this.svg.appendChild(node);
+	return node;
 }
 
 

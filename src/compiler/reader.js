@@ -173,15 +173,27 @@ CompilerReader.prototype.readInteger = function(errMsg = null)
 }
 
 
+CompilerReader.prototype.readAbsolutePitchName = function(errMsg = null)
+{
+	return this.readWhile(errMsg, this.charIsAbsolutePitchName, this.charIsAbsolutePitchName);
+}
+
+
 CompilerReader.prototype.readNoteName = function(errMsg = null)
 {
 	return this.readWhile(errMsg, this.charIsNoteName, this.charIsNoteName);
 }
 
 
-CompilerReader.prototype.readDegreeName = function(errMsg = null)
+CompilerReader.prototype.readChordName = function(errMsg = null)
 {
-	return this.readWhile(errMsg, this.charIsDegreeName, this.charIsDegreeName);
+	return this.readWhile(errMsg, this.charIsChordName, this.charIsChordName);
+}
+
+
+CompilerReader.prototype.readChordKindName = function(errMsg = null)
+{
+	return this.readWhile(errMsg, this.charIsChordKindName, this.charIsChordKindName);
 }
 
 
@@ -227,7 +239,7 @@ CompilerReader.prototype.charIsNumber = function(c)
 }
 
 
-CompilerReader.prototype.charIsNoteName = function(c)
+CompilerReader.prototype.charIsAbsolutePitchName = function(c)
 {
 	return (
 		(c >= 'A' && c <= 'G') ||
@@ -236,9 +248,32 @@ CompilerReader.prototype.charIsNoteName = function(c)
 }
 
 
-CompilerReader.prototype.charIsDegreeName = function(c)
+CompilerReader.prototype.charIsNoteName = function(c)
 {
 	return (
+		(c >= 'A' && c <= 'G') ||
+		(c >= 'a' && c <= 'g') ||
 		(c >= '1' && c <= '7') ||
-		c == 'b' || c == '#');
+		c == '#');
+}
+
+
+CompilerReader.prototype.charIsChordName = function(c)
+{
+	return (
+		(c >= 'A' && c <= 'G') ||
+		(c >= 'a' && c <= 'g') ||
+		c == 'I' || c == 'i' ||
+		c == 'V' || c == 'v' ||
+		c == '#');
+}
+
+
+CompilerReader.prototype.charIsChordKindName = function(c)
+{
+	return (
+		(c >= 'A' && c <= 'Z') ||
+		(c >= 'a' && c <= 'z') ||
+		(c >= '1' && c <= '9') ||
+		c == '+' || c == '%');
 }
