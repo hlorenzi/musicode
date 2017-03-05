@@ -8,6 +8,8 @@ function Synth()
 	this.noteOffEvents = [];
 	this.voices        = [];
 	this.processCallback = null;
+	
+	this.instruments = [InstrumentSquareWave, InstrumentTriangleWave];
 }
 
 
@@ -67,7 +69,7 @@ Synth.prototype.process = function(deltaTime)
 			var ev = this.noteOnEvents[noteOnProcessed];
 			noteOnProcessed++;
 			
-			this.voiceStart(ev.instrument, ev.midiPitch, ev.volume);
+			this.voiceStart(ev.instrumentIndex, ev.midiPitch, ev.volume);
 		}
 		
 		// Handle pending note off events up to the current time.
@@ -80,10 +82,10 @@ Synth.prototype.process = function(deltaTime)
 			for (var j = 0; j < this.voices.length; j++)
 			{
 				var voice = this.voices[j];
-				if (voice.instrument == ev.instrument &&
+				if (voice.instrumentIndex == ev.instrumentIndex &&
 					voice.midiPitch == ev.midiPitch)
 				{
-					this.voiceOff(j);
+					this.voiceRelease(j);
 				}
 			}
 		}
@@ -102,53 +104,49 @@ Synth.prototype.process = function(deltaTime)
 	{
 		var voice = this.voices[i];
 		
-		voice.timer += deltaTime;
+		voice.time += deltaTime;
+		if (voice.released)
+			voice.timeReleased += deltaTime;
 		
-		var envelope = 1;
-		if (voice.off)
-			envelope = Math.max(0, 1 - voice.timer / 0.1);
-		else
-		{
-			if (voice.timer < 0.1)
-				envelope = Math.max(1, 1.75 - voice.timer / 0.2);
-			else
-				envelope = Math.max(0.5, 1 - voice.timer / 0.5);
-		}
+		var frequencies = this.instruments[voice.instrumentIndex].generate(
+			voice.time, voice.timeReleased, voice.midiPitch);
 		
-		if (voice.off && voice.timer > 0.1)
+		if (frequencies == null)
 		{
 			this.voiceStop(i);
 			this.voices.splice(i, 1);
 		}
 		else
 		{
-			for (var j = 0; j < voice.gainNodes.length; j++)
+			for (var j = 0; j < frequencies.length; j++)
 			{
-				if (voice.gainNodes[j] != null)
-					voice.gainNodes[j].gain.value = voice.amplitudes[j] * voice.volume * envelope * this.globalVolume;
+				voice.oscillators[j].frequency.value =
+					Math.min(24000, frequencies[j][0] * voice.frequencyInHertz);
+				
+				voice.gainNodes[j].gain.value = frequencies[j][1] * voice.volume * this.globalVolume;
 			}
 		}
 	}
 }
 
 
-Synth.prototype.addNoteOn = function(time, instrument, midiPitch, volume)
+Synth.prototype.addNoteOn = function(time, instrumentIndex, midiPitch, volume)
 {
 	this.noteOnEvents.push({
-		time:       time + this.time,
-		instrument: instrument,
-		midiPitch:  midiPitch,
-		volume:     volume
+		time:            time + this.time,
+		instrumentIndex: instrumentIndex,
+		midiPitch:       midiPitch,
+		volume:          volume
 	});
 }
 
 
-Synth.prototype.addNoteOff = function(time, instrument, midiPitch)
+Synth.prototype.addNoteOff = function(time, instrumentIndex, midiPitch)
 {
 	this.noteOffEvents.push({
-		time:       time + this.time,
-		instrument: instrument,
-		midiPitch:  midiPitch
+		time:            time + this.time,
+		instrumentIndex: instrumentIndex,
+		midiPitch:       midiPitch
 	});
 }
 
@@ -163,82 +161,62 @@ Synth.prototype.sortEvents = function()
 }
 
 
-Synth.prototype.voiceStart = function(instrument, midiPitch, volume)
+Synth.prototype.voiceStart = function(instrumentIndex, midiPitch, volume)
 {
 	for (var i = this.voices.length - 1; i >= 0; i--)
 	{
 		var otherVoice = this.voices[i];
-		if (otherVoice.instrument == instrument &&
+		if (otherVoice.instrumentIndex == instrumentIndex &&
 			otherVoice.midiPitch == midiPitch)
 		{
 			this.voiceStop(i);
 			this.voices.splice(i, 1);
 		}
 	}
-			
-	var voice = {
-		instrument:  instrument,
-		midiPitch:   midiPitch,
-		volume:      volume,
-		timer:       0,
-		off:         false,
-		amplitudes:  [],
-		oscillators: [],
-		gainNodes:   []
-	};
 	
 	var frequencyInHertz = Math.pow(2, (midiPitch - 69) / 12) * 440;
 	
-	switch (instrument)
-	{
-		case 0:
-		{
-			// Square wave harmonics.
-			voice.amplitudes = [1, 0, 1 / 3, 0, 1 / 5, 0, 1 / 7, 0, 1 / 9];
-			break;
-		}
-		case 1:
-		{
-			// Triangle wave harmonics.
-			voice.amplitudes = [1, 0, 1 / 9, 0, 1 / 25, 0, 1 / 49, 0, 1 / 81];
-			break;
-		}
-	}
+	var voice = {
+		instrumentIndex:  instrumentIndex,
+		midiPitch:        midiPitch,
+		frequencyInHertz: frequencyInHertz,
+		volume:           volume,
+		time:             0,
+		timeReleased:     0,
+		released:         false,
+		oscillators:      [],
+		gainNodes:        []
+	};
 	
-	for (var i = 0; i < voice.amplitudes.length; i++)
+	var frequencies = this.instruments[instrumentIndex].generate(0, 0, midiPitch);
+	if (frequencies == null)
+		return;
+	
+	for (var i = 0; i < frequencies.length; i++)
 	{
-		if (voice.amplitudes[i] == 0)
-		{
-			voice.oscillators.push(null);
-			voice.gainNodes.push(null);
-		}
-		else
-		{		
-			var oscillator = this.audioCtx.createOscillator();
-			oscillator.frequency.value = frequencyInHertz * (i + 1);
-			oscillator.type = "sine";
-			
-			var gainNode = this.audioCtx.createGain();
-			oscillator.connect(gainNode);
-			gainNode.connect(this.audioCtx.destination);
-			gainNode.gain.value = voice.amplitudes[i] * volume * this.globalVolume;
-			
-			oscillator.start(0);
-			
-			voice.oscillators.push(oscillator);
-			voice.gainNodes.push(gainNode);
-		}
+		var oscillator = this.audioCtx.createOscillator();
+		oscillator.frequency.value = Math.min(24000, frequencies[i][0] * frequencyInHertz);
+		oscillator.type = "sine";
+		
+		var gainNode = this.audioCtx.createGain();
+		oscillator.connect(gainNode);
+		gainNode.connect(this.audioCtx.destination);
+		gainNode.gain.value = frequencies[i][1] * volume * this.globalVolume;
+		
+		oscillator.start(0);
+		
+		voice.oscillators.push(oscillator);
+		voice.gainNodes.push(gainNode);
 	}
 	
 	this.voices.push(voice);
 }
 
 
-Synth.prototype.voiceOff = function(index)
+Synth.prototype.voiceRelease = function(index)
 {
-	var voice   = this.voices[index];
-	voice.off   = true;
-	voice.timer = 0;
+	var voice = this.voices[index];
+	voice.released = true;
 }
 
 
@@ -246,8 +224,5 @@ Synth.prototype.voiceStop = function(index)
 {
 	var voice = this.voices[index];
 	for (var i = 0; i < voice.oscillators.length; i++)
-	{
-		if (voice.oscillators[i] != null)
-			voice.oscillators[i].stop(0);
-	}
+		voice.oscillators[i].stop(0);
 }
