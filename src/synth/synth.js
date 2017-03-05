@@ -9,7 +9,7 @@ function Synth()
 	this.voices        = [];
 	this.processCallback = null;
 	
-	this.instruments = [InstrumentSquareWave, InstrumentTriangleWave];
+	this.instruments = [InstrumentPiano, InstrumentPiano];
 }
 
 

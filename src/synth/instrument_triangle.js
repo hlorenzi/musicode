@@ -18,7 +18,7 @@ InstrumentTriangleWave.generate = function(time, timeReleased, midiPitch)
 		return null;
 	
 	return [
-		[1,  envelope * 1/1],
+		[1,  envelope * 1/1/1],
 		[3,  envelope * 1/3/3],
 		[5,  envelope * 1/5/5],
 		[7,  envelope * 1/7/7],
